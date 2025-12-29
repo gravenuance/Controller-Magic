@@ -27,6 +27,7 @@ namespace ControllerMagic
         private int ScrollDeadZone => AppSettings.Instance.ScrollDeadZone;
         private float StickSensitivity => AppSettings.Instance.StickSensitivity;
         private int KeyboardDeadZone => AppSettings.Instance.KeyboardDeadZone;
+        private float StickAccelPower => AppSettings.Instance.StickAccelPower;
 
         private int _slotIndex;
         public int SlotIndex => _slotIndex;
@@ -153,23 +154,35 @@ namespace ControllerMagic
         {
             var lx = pad.LeftThumbX;
             var ly = pad.LeftThumbY;
-
             var mag = Math.Sqrt(lx * lx + ly * ly);
-            if (mag >= StickDeadZone)
+            if (mag < StickDeadZone)
             {
-
-                var normX = lx / 32767.0;
-                var normY = ly / 32767.0;
-
-                var factor = (mag / 32767.0) * StickSensitivity * 1000.0;
-                var dx = (int)(normX * factor);
-                var dy = (int)(-normY * factor);
-
-                if (dx != 0 || dy != 0)
-                    InputEmulator.MoveMouse(dx, dy);
+                HandleScroll(pad.RightThumbY, pad.RightThumbX);
+                return;
             }
+
+            // Normalized direction
+            var normX = lx / 32767.0;
+            var normY = ly / 32767.0;
+
+            // Magnitude normalized to 0–1
+            var normMag = mag / 32767.0;
+            if (normMag > 1.0) normMag = 1.0;
+
+            // Apply acceleration curve: power > 1 gives slower start, faster end
+            var curvedMag = Math.Pow(normMag, StickAccelPower);
+
+            // Final speed scale
+            var factor = curvedMag * StickSensitivity * 1000.0;
+
+            var dx = (int)(normX * factor);
+            var dy = (int)(-normY * factor);
+            if (dx != 0 || dy != 0)
+                InputEmulator.MoveMouse(dx, dy);
+
             HandleScroll(pad.RightThumbY, pad.RightThumbX);
         }
+
 
         private void HandleScroll(short ry, short rx)
         {
@@ -430,10 +443,14 @@ namespace ControllerMagic
             double angleRad = Math.Atan2(y, x);
             double angleDeg = angleRad * (180.0 / Math.PI);
 
-            angleDeg = angleDeg - 90.0;
+            // Now angleDeg is standard: 0° = right, 90° = up, 180° = left, 270° = down
+
+            // Center sector 0 at 90° (up), then wrap to [0, 360)
+            angleDeg -= 90.0;
             if (angleDeg < 0) angleDeg += 360.0;
 
-            int sector = (int)Math.Floor(angleDeg / 45.0);
+            // Each sector is 45°. Using +22.5 shifts to center each sector.
+            int sector = (int)Math.Floor((angleDeg + 22.5) / 45.0);
 
             if (sector < 0 || sector >= 8)
                 sector = 0;
@@ -527,7 +544,7 @@ namespace ControllerMagic
             new KeyEntry(VK_O, 'o'),
             new KeyEntry(VK_I, 'i'),
             new KeyEntry(VK_N, 'n'),
-            new KeyEntry(0,    '\0'),
+            new KeyEntry(VK_Q, 'q'),
         },
         // 2 Right: s, r, h
         {
@@ -555,7 +572,7 @@ namespace ControllerMagic
             new KeyEntry(VK_F, 'f'),
             new KeyEntry(VK_G, 'g'),
             new KeyEntry(VK_Y, 'y'),
-            new KeyEntry(VK_Q, 'q'),
+            new KeyEntry(0,    '\0'),
         },
         // 6 Left: p, b, v
         {

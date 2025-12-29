@@ -153,7 +153,7 @@ namespace ControllerMagic
             // sensitivityTrackBar
             // 
             this.sensitivityTrackBar.Location = new System.Drawing.Point(20, 280);
-            this.sensitivityTrackBar.Minimum = 0;
+            this.sensitivityTrackBar.Minimum = 1;
             this.sensitivityTrackBar.Maximum = 10;
             this.sensitivityTrackBar.TickFrequency = 1;
             this.sensitivityTrackBar.Name = "sensitivityTrackBar";

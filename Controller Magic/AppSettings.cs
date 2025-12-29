@@ -16,6 +16,8 @@ namespace ControllerMagic
 
         public bool RunAtStartup { get; set; } = false;
 
+        public float StickAccelPower { get; set; } = 1.5f;
+
         private static string SettingsPath =>
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
 
