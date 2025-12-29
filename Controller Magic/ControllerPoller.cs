@@ -288,25 +288,22 @@ namespace ControllerMagic
 
             if (!_keyboardMode)
             {
-                /*if (A_pressed)
-                    InputEmulator.LeftClick();*/
+
+
+                if (A_pressed)
+                    InputEmulator.SetLeftButtonState(true);
 
                 if (!A_down && _prevButtons.HasFlag(GamepadButtons.A))
-                {
-                    // Hold left click
                     InputEmulator.SetLeftButtonState(false);
-                }
-                else if (A_down)
-                {
-                    // Release left click
-                    InputEmulator.SetLeftButtonState(true);
-                }
 
                 if (B_pressed)
                     InputEmulator.SendKey(VK_BACK);
 
                 if (X_pressed)
-                    InputEmulator.RightClick();
+                    InputEmulator.SetRightButtonState(true);
+
+                if (!X_down && _prevButtons.HasFlag(GamepadButtons.X))
+                    InputEmulator.SetRightButtonState(false);
 
                 if (Y_pressed)
                     InputEmulator.SendKey(VK_MEDIA_PLAY_PAUSE);

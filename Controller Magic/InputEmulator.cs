@@ -67,35 +67,68 @@ namespace ControllerMagic
 
         const uint INPUT_MOUSE = 0;
         const uint INPUT_KEYBOARD = 1;
-
         const uint MOUSEEVENTF_MOVE = 0x0001;
         const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
         const uint MOUSEEVENTF_LEFTUP = 0x0004;
         const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
         const uint MOUSEEVENTF_RIGHTUP = 0x0010;
-
+        const uint MOUSEEVENTF_ABSOLUTE = 0x8000;   // add this
         const uint KEYEVENTF_KEYUP = 0x0002;
 
         [DllImport("user32.dll", SetLastError = true)]
         static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+        [DllImport("user32.dll")]
+        private static extern bool GetCursorPos(out POINT lpPoint);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetCursorPos(int X, int Y); // [web:93]
+
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int nIndex); // [web:103]
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
         public static void MoveMouse(int dx, int dy)
         {
-            var inputs = new INPUT[1];
-            inputs[0].type = INPUT_MOUSE;
-            inputs[0].U.mi = new MOUSEINPUT
-            {
-                dx = dx,
-                dy = dy,
-                dwFlags = MOUSEEVENTF_MOVE
-            };
-            SendInput(1, inputs, Marshal.SizeOf<INPUT>());
+            GetCursorPos(out var p);
+
+            int targetX = p.X + dx;
+            int targetY = p.Y + dy;
+
+            int screenWidth = GetSystemMetrics(0);  // SM_CXSCREEN
+            int screenHeight = GetSystemMetrics(1); // SM_CYSCREEN
+
+            if (targetX < 0) targetX = 0;
+            if (targetY < 0) targetY = 0;
+            if (targetX >= screenWidth) targetX = screenWidth - 1;
+            if (targetY >= screenHeight) targetY = screenHeight - 1;
+
+            SetCursorPos(targetX, targetY);
         }
+
+        static bool _leftIsDown;
         public static void SetLeftButtonState(bool pressed)
         {
+            if (pressed == _leftIsDown) return;
+            _leftIsDown = pressed;
             var inputs = new INPUT[1];
             inputs[0].type = INPUT_MOUSE;
             inputs[0].U.mi.dwFlags = pressed ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
+            SendInput(1, inputs, Marshal.SizeOf<INPUT>());
+        }
+        public static void SetRightButtonState(bool pressed)
+        {
+            if (pressed == _leftIsDown) return;
+            _leftIsDown = pressed;
+            var inputs = new INPUT[1];
+            inputs[0].type = INPUT_MOUSE;
+            inputs[0].U.mi.dwFlags = pressed ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
             SendInput(1, inputs, Marshal.SizeOf<INPUT>());
         }
         public static void LeftClick()
@@ -126,6 +159,7 @@ namespace ControllerMagic
 
         public static void SendKey(ushort vk)
         {
+            System.Diagnostics.Debug.WriteLine(vk);
             var inputs = new INPUT[2];
 
             inputs[0].type = INPUT_KEYBOARD;
