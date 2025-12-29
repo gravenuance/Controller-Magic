@@ -291,15 +291,15 @@ namespace ControllerMagic
                 /*if (A_pressed)
                     InputEmulator.LeftClick();*/
 
-                if (A_down)
+                if (!A_down && _prevButtons.HasFlag(GamepadButtons.A))
                 {
                     // Hold left click
-                    InputEmulator.SetLeftButtonState(true);
+                    InputEmulator.SetLeftButtonState(false);
                 }
-                else if (!A_down && _prevButtons.HasFlag(GamepadButtons.A))
+                else if (A_down)
                 {
                     // Release left click
-                    InputEmulator.SetLeftButtonState(false);
+                    InputEmulator.SetLeftButtonState(true);
                 }
 
                 if (B_pressed)
