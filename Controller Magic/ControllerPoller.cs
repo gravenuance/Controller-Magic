@@ -110,7 +110,7 @@ namespace ControllerMagic
                     using var proc = Process.GetProcessById(pid);
                     string name = proc.ProcessName.ToLowerInvariant();
 
-                    if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome"))
+                    if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome") || name.Contains("explorer"))
                         return false;
                 }
                 catch
@@ -288,8 +288,19 @@ namespace ControllerMagic
 
             if (!_keyboardMode)
             {
-                if (A_pressed)
-                    InputEmulator.LeftClick();
+                /*if (A_pressed)
+                    InputEmulator.LeftClick();*/
+
+                if (A_down)
+                {
+                    // Hold left click
+                    InputEmulator.SetLeftButtonState(true);
+                }
+                else if (!A_down && _prevButtons.HasFlag(GamepadButtons.A))
+                {
+                    // Release left click
+                    InputEmulator.SetLeftButtonState(false);
+                }
 
                 if (B_pressed)
                     InputEmulator.SendKey(VK_BACK);

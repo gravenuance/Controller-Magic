@@ -91,7 +91,13 @@ namespace ControllerMagic
             };
             SendInput(1, inputs, Marshal.SizeOf<INPUT>());
         }
-
+        public static void SetLeftButtonState(bool pressed)
+        {
+            var inputs = new INPUT[1];
+            inputs[0].type = INPUT_MOUSE;
+            inputs[0].U.mi.dwFlags = pressed ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
+            SendInput(1, inputs, Marshal.SizeOf<INPUT>());
+        }
         public static void LeftClick()
         {
             var inputs = new INPUT[2];
