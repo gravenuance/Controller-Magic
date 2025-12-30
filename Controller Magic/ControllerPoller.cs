@@ -110,7 +110,7 @@ namespace ControllerMagic
                     using var proc = Process.GetProcessById(pid);
                     string name = proc.ProcessName.ToLowerInvariant();
 
-                    if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome") || name.Contains("explorer"))
+                    if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome") || name.Contains("explorer") || name.Contains("edge"))
                         return false;
                 }
                 catch
@@ -161,18 +161,14 @@ namespace ControllerMagic
                 return;
             }
 
-            // Normalized direction
             var normX = lx / 32767.0;
             var normY = ly / 32767.0;
 
-            // Magnitude normalized to 0–1
             var normMag = mag / 32767.0;
             if (normMag > 1.0) normMag = 1.0;
 
-            // Apply acceleration curve: power > 1 gives slower start, faster end
             var curvedMag = Math.Pow(normMag, StickAccelPower);
 
-            // Final speed scale
             var factor = curvedMag * StickSensitivity * 1000.0;
 
             var dx = (int)(normX * factor);
@@ -257,6 +253,7 @@ namespace ControllerMagic
             bool Left_down = buttons.HasFlag(GamepadButtons.DPadLeft);
             bool Right_down = buttons.HasFlag(GamepadButtons.DPadRight);
             bool LS_down = buttons.HasFlag(GamepadButtons.LeftThumb);
+            bool RS_down = buttons.HasFlag(GamepadButtons.RightThumb);
 
             bool A_pressed = A_down && !_prevButtons.HasFlag(GamepadButtons.A);
             bool B_pressed = B_down && !_prevButtons.HasFlag(GamepadButtons.B);
@@ -271,6 +268,7 @@ namespace ControllerMagic
             bool Left_pressed = Left_down && !_prevButtons.HasFlag(GamepadButtons.DPadLeft);
             bool Right_pressed = Right_down && !_prevButtons.HasFlag(GamepadButtons.DPadRight);
             bool LS_pressed = LS_down && !_prevButtons.HasFlag(GamepadButtons.LeftThumb);
+            bool RS_pressed = RS_down && !_prevButtons.HasFlag(GamepadButtons.RightThumb);
 
             if (LS_pressed)
                 _keyboardMode = !_keyboardMode;
@@ -285,12 +283,13 @@ namespace ControllerMagic
             const ushort VK_MEDIA_PLAY_PAUSE = 0xB3;
             const ushort VK_MEDIA_PREV_TRACK = 0xB1;
             const ushort VK_MEDIA_NEXT_TRACK = 0xB0;
+            const ushort VK_CTRL = 0x11;
 
             if (!_keyboardMode)
             {
 
 
-                if (A_pressed)
+                if (A_down)
                     InputEmulator.SetLeftButtonState(true);
 
                 if (!A_down && _prevButtons.HasFlag(GamepadButtons.A))
@@ -299,7 +298,7 @@ namespace ControllerMagic
                 if (B_pressed)
                     InputEmulator.SendKey(VK_BACK);
 
-                if (X_pressed)
+                if (X_down)
                     InputEmulator.SetRightButtonState(true);
 
                 if (!X_down && _prevButtons.HasFlag(GamepadButtons.X))
@@ -321,6 +320,12 @@ namespace ControllerMagic
                     InputEmulator.SendKey(VK_LEFT);
                 if (Right_pressed)
                     InputEmulator.SendKey(VK_RIGHT);
+                if (RS_pressed)
+                {
+                    InputEmulator.SendKey(VK_CTRL, true);
+                    InputEmulator.LeftClick();
+                    InputEmulator.SendKey(VK_CTRL, false);
+                }
             }
 
             if (Start_pressed)

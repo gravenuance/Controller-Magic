@@ -171,5 +171,18 @@ namespace ControllerMagic
 
             SendInput(2, inputs, Marshal.SizeOf<INPUT>());
         }
+
+        public static void SendKey(ushort vk, bool pressed)
+        {
+            System.Diagnostics.Debug.WriteLine(vk);
+            var inputs = new INPUT[1];
+
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].U.ki.wVk = vk; // key down
+            if (!pressed)
+                inputs[0].U.ki.dwFlags = KEYEVENTF_KEYUP;
+
+            SendInput(1, inputs, Marshal.SizeOf<INPUT>());
+        }
     }
 }
