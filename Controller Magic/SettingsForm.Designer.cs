@@ -91,8 +91,8 @@ namespace ControllerMagic
             // 
             this.deadZoneTrackBar.Location = new System.Drawing.Point(20, 80);
             this.deadZoneTrackBar.Minimum = 0;
-            this.deadZoneTrackBar.Maximum = 12000;
-            this.deadZoneTrackBar.TickFrequency = 2000;
+            this.deadZoneTrackBar.Maximum = 10000;
+            this.deadZoneTrackBar.TickFrequency = 1000;
             this.deadZoneTrackBar.Name = "deadZoneTrackBar";
             this.deadZoneTrackBar.Size = new System.Drawing.Size(430, 45);
             this.deadZoneTrackBar.TabIndex = 2;
@@ -112,8 +112,8 @@ namespace ControllerMagic
             // 
             this.scrollDeadZoneTrackBar.Location = new System.Drawing.Point(20, 150);
             this.scrollDeadZoneTrackBar.Minimum = 0;
-            this.scrollDeadZoneTrackBar.Maximum = 12000;
-            this.scrollDeadZoneTrackBar.TickFrequency = 2000;
+            this.scrollDeadZoneTrackBar.Maximum = 10000;
+            this.scrollDeadZoneTrackBar.TickFrequency = 1000;
             this.scrollDeadZoneTrackBar.Name = "scrollDeadZoneTrackBar";
             this.scrollDeadZoneTrackBar.Size = new System.Drawing.Size(430, 45);
             this.scrollDeadZoneTrackBar.TabIndex = 4;
@@ -133,8 +133,8 @@ namespace ControllerMagic
             // 
             this.keyboardDeadZoneTrackBar.Location = new System.Drawing.Point(20, 215);
             this.keyboardDeadZoneTrackBar.Minimum = 0;
-            this.keyboardDeadZoneTrackBar.Maximum = 12000;
-            this.keyboardDeadZoneTrackBar.TickFrequency = 2000;
+            this.keyboardDeadZoneTrackBar.Maximum = 10000;
+            this.keyboardDeadZoneTrackBar.TickFrequency = 1000;
             this.keyboardDeadZoneTrackBar.Name = "keyboardDeadZoneTrackBar";
             this.keyboardDeadZoneTrackBar.Size = new System.Drawing.Size(430, 45);
             this.keyboardDeadZoneTrackBar.TabIndex = 6;
@@ -154,7 +154,7 @@ namespace ControllerMagic
             // 
             this.sensitivityTrackBar.Location = new System.Drawing.Point(20, 280);
             this.sensitivityTrackBar.Minimum = 1;
-            this.sensitivityTrackBar.Maximum = 10;
+            this.sensitivityTrackBar.Maximum = 5;
             this.sensitivityTrackBar.TickFrequency = 1;
             this.sensitivityTrackBar.Name = "sensitivityTrackBar";
             this.sensitivityTrackBar.Size = new System.Drawing.Size(430, 45);

@@ -7,9 +7,9 @@ namespace ControllerMagic
         public static AppSettings Instance { get; } = Load();
 
         // All deadzone modifiers
-        public int StickDeadZone { get; set; } = 8000;
-        public int ScrollDeadZone { get; set; } = 8000;
-        public int KeyboardDeadZone { get; set; } = 8000;
+        public int StickDeadZone { get; set; } = 4000;
+        public int ScrollDeadZone { get; set; } = 4000;
+        public int KeyboardDeadZone { get; set; } = 4000;
 
         // Stick sensitivity
         public float StickSensitivity { get; set; } = 0.02f;
