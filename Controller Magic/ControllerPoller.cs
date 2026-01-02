@@ -33,7 +33,7 @@ namespace ControllerMagic
         public int SlotIndex => _slotIndex;
 
         private GamepadButtons _prevButtons;
-
+        private static bool _watching;
 
         public void Start()
         {
@@ -103,19 +103,26 @@ namespace ControllerMagic
                 bool isFullscreen = width == bounds.Width && height == bounds.Height;
                 if (!isFullscreen)
                     return false;
-
                 GetWindowThreadProcessId(hWnd, out int pid);
                 try
                 {
                     using var proc = Process.GetProcessById(pid);
                     string name = proc.ProcessName.ToLowerInvariant();
 
-                    if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome") || name.Contains("explorer") || name.Contains("edge"))
+                    if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome") || name.Contains("explorer"))
+                    {
                         return false;
+                    }
+                    else if (name.Contains("edge"))
+                    {
+                        _watching = true;
+                        return false;
+                    }
                 }
                 catch
                 {
                 }
+
 
                 return true;
             }
@@ -298,11 +305,10 @@ namespace ControllerMagic
                 if (B_pressed)
                     InputEmulator.SendKey(VK_BACK);
 
-                if (X_down)
-                    InputEmulator.SetRightButtonState(true);
-
-                if (!X_down && _prevButtons.HasFlag(GamepadButtons.X))
-                    InputEmulator.SetRightButtonState(false);
+                if (X_pressed && !_watching)
+                    InputEmulator.RightClick();
+                else if (X_pressed)
+                    InputEmulator.SendKey(VK_S);
 
                 if (Y_pressed)
                     InputEmulator.SendKey(VK_MEDIA_PLAY_PAUSE);
