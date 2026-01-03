@@ -3,11 +3,12 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <RootNamespace>Controller_Magic</RootNamespace>
+    <RootNamespace>ControllerMagic</RootNamespace>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>controller.ico</ApplicationIcon>
+    <StartupObject>ControllerMagic.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>

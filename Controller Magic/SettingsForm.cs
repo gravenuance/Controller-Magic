@@ -5,7 +5,7 @@
         public SettingsForm()
         {
             InitializeComponent();
-            this.Icon = Controller_Magic.Properties.Resources.Controller;
+            this.Icon = ControllerMagic.Properties.Resources.Controller;
             LoadSettingsIntoUI();
         }
 

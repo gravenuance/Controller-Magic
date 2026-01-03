@@ -11,7 +11,7 @@ namespace ControllerMagic
         {
             _trayIcon = new NotifyIcon
             {
-                Icon = Controller_Magic.Properties.Resources.Controller,
+                Icon = ControllerMagic.Properties.Resources.Controller,
                 Text = "Controller Magic",
                 Visible = true
             };
