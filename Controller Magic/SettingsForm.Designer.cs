@@ -59,7 +59,7 @@ namespace ControllerMagic
             this.closeButton.TabIndex = 100;
             this.closeButton.Text = "X";
             this.closeButton.UseVisualStyleBackColor = false;
-            this.closeButton.Click += new System.EventHandler(this.closeButton_Click);
+            this.closeButton.Click += new System.EventHandler(this.CloseButton_Click);
             // 
             // runAtStartupCheckBox
             this.runAtStartupCheckBox.AutoSize = false;
@@ -75,7 +75,7 @@ namespace ControllerMagic
             this.runAtStartupCheckBox.Name = "runAtStartupCheckBox";
             this.runAtStartupCheckBox.TabIndex = 0;
             this.runAtStartupCheckBox.UseVisualStyleBackColor = false;
-            this.runAtStartupCheckBox.CheckedChanged += new System.EventHandler(this.runAtStartupCheckBox_CheckedChanged);
+            this.runAtStartupCheckBox.CheckedChanged += new System.EventHandler(this.RunAtStartupCheckBox_CheckedChanged);
             // 
             // deadZoneLabel
             // 
@@ -96,7 +96,7 @@ namespace ControllerMagic
             this.deadZoneTrackBar.Name = "deadZoneTrackBar";
             this.deadZoneTrackBar.Size = new System.Drawing.Size(430, 45);
             this.deadZoneTrackBar.TabIndex = 2;
-            this.deadZoneTrackBar.Scroll += new System.EventHandler(this.deadZoneTrackBar_Scroll);
+            this.deadZoneTrackBar.Scroll += new System.EventHandler(this.DeadZoneTrackBar_Scroll);
             // 
             // scrollDeadZoneLabel
             // 
@@ -117,7 +117,7 @@ namespace ControllerMagic
             this.scrollDeadZoneTrackBar.Name = "scrollDeadZoneTrackBar";
             this.scrollDeadZoneTrackBar.Size = new System.Drawing.Size(430, 45);
             this.scrollDeadZoneTrackBar.TabIndex = 4;
-            this.scrollDeadZoneTrackBar.Scroll += new System.EventHandler(this.scrollDeadZoneTrackBar_Scroll);
+            this.scrollDeadZoneTrackBar.Scroll += new System.EventHandler(this.ScrollDeadZoneTrackBar_Scroll);
             // 
             // keyboardDeadZoneLabel
             // 
@@ -138,7 +138,7 @@ namespace ControllerMagic
             this.keyboardDeadZoneTrackBar.Name = "keyboardDeadZoneTrackBar";
             this.keyboardDeadZoneTrackBar.Size = new System.Drawing.Size(430, 45);
             this.keyboardDeadZoneTrackBar.TabIndex = 6;
-            this.keyboardDeadZoneTrackBar.Scroll += new System.EventHandler(this.keyboardDeadZoneTrackBar_Scroll);
+            this.keyboardDeadZoneTrackBar.Scroll += new System.EventHandler(this.KeyboardDeadZoneTrackBar_Scroll);
             // 
             // sensitivityLabel
             // 
@@ -159,7 +159,7 @@ namespace ControllerMagic
             this.sensitivityTrackBar.Name = "sensitivityTrackBar";
             this.sensitivityTrackBar.Size = new System.Drawing.Size(430, 45);
             this.sensitivityTrackBar.TabIndex = 8;
-            this.sensitivityTrackBar.Scroll += new System.EventHandler(this.sensitivityTrackBar_Scroll);
+            this.sensitivityTrackBar.Scroll += new System.EventHandler(this.SensitivityTrackBar_Scroll);
             // 
             // SettingsForm
             // 

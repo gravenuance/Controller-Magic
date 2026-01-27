@@ -5,7 +5,7 @@
         public SettingsForm()
         {
             InitializeComponent();
-            this.Icon = ControllerMagic.Properties.Resources.Controller;
+            Icon = ControllerMagic.Properties.Resources.Controller;
             LoadSettingsIntoUI();
         }
 
@@ -42,7 +42,7 @@
 
 
 
-        private void runAtStartupCheckBox_CheckedChanged(object sender, EventArgs e)
+        private void RunAtStartupCheckBox_CheckedChanged(object sender, EventArgs e)
         {
             bool enabled = runAtStartupCheckBox.Checked;
 
@@ -54,25 +54,25 @@
             UpdateStartupSwitchVisual();
         }
 
-        private void deadZoneTrackBar_Scroll(object sender, EventArgs e)
+        private void DeadZoneTrackBar_Scroll(object sender, EventArgs e)
         {
             AppSettings.Instance.StickDeadZone = deadZoneTrackBar.Value;
             AppSettings.Instance.Save();
         }
 
-        private void scrollDeadZoneTrackBar_Scroll(object sender, EventArgs e)
+        private void ScrollDeadZoneTrackBar_Scroll(object sender, EventArgs e)
         {
             AppSettings.Instance.ScrollDeadZone = scrollDeadZoneTrackBar.Value;
             AppSettings.Instance.Save();
         }
 
-        private void keyboardDeadZoneTrackBar_Scroll(object sender, EventArgs e)
+        private void KeyboardDeadZoneTrackBar_Scroll(object sender, EventArgs e)
         {
             AppSettings.Instance.KeyboardDeadZone = keyboardDeadZoneTrackBar.Value;
             AppSettings.Instance.Save();
         }
 
-        private void sensitivityTrackBar_Scroll(object sender, EventArgs e)
+        private void SensitivityTrackBar_Scroll(object sender, EventArgs e)
         {
             AppSettings.Instance.StickSensitivity = sensitivityTrackBar.Value / 100f;
             AppSettings.Instance.Save();
@@ -111,7 +111,7 @@
             if (e.Button == MouseButtons.Left)
                 _dragging = false;
         }
-        private void closeButton_Click(object sender, EventArgs e)
+        private void CloseButton_Click(object sender, EventArgs e)
         {
             Close();
         }
