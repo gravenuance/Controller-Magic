@@ -18,33 +18,14 @@ namespace ControllerMagic
         public static void SetEnabled(bool enabled)
         {
             string exe = Application.ExecutablePath;
+            using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
+            if (key == null) return;
 
-            if (IsElevated())
-            {
-                using var key = Registry.LocalMachine.OpenSubKey(RunKey, writable: true);
-                if (key == null) return;
-
-                if (enabled)
-                    key.SetValue(AppName, exe);
-                else if (key.GetValue(AppName) != null)
-                    key.DeleteValue(AppName);
-            }
-            else
-            {
-                using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
-                if (key == null) return;
-
-                if (enabled)
-                    key.SetValue(AppName, exe);
-                else if (key.GetValue(AppName) != null)
-                    key.DeleteValue(AppName);
-            }
-        }
-        public static bool IsElevated()
-        {
-            using var identity = WindowsIdentity.GetCurrent();
-            var principal = new WindowsPrincipal(identity);
-            return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            if (enabled)
+                key.SetValue(AppName, exe);
+            else if (key.GetValue(AppName) != null)
+                key.DeleteValue(AppName);
+            
         }
     }
 }

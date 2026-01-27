@@ -44,10 +44,11 @@ namespace ControllerMagic
         {
             try
             {
-                var options = new JsonSerializerOptions
+                JsonSerializerOptions jsonSerializerOptions = new()
                 {
                     WriteIndented = true
                 };
+                var options = jsonSerializerOptions;
                 string json = JsonSerializer.Serialize(this, options);
                 File.WriteAllText(SettingsPath, json);
             }

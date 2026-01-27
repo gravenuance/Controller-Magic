@@ -9,6 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>controller.ico</ApplicationIcon>
     <StartupObject>ControllerMagic.Program</StartupObject>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

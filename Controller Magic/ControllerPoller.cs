@@ -23,11 +23,11 @@ namespace ControllerMagic
         public int KeyboardLayer => _keyboardLayer;
         public int CurrentSector => _currentSector;
         public static KeyEntry[,,] KeyboardLayout => Daisywheel;
-        private int StickDeadZone => AppSettings.Instance.StickDeadZone;
-        private int ScrollDeadZone => AppSettings.Instance.ScrollDeadZone;
-        private float StickSensitivity => AppSettings.Instance.StickSensitivity;
-        private int KeyboardDeadZone => AppSettings.Instance.KeyboardDeadZone;
-        private float StickAccelPower => AppSettings.Instance.StickAccelPower;
+        private static int StickDeadZone => AppSettings.Instance.StickDeadZone;
+        private static int ScrollDeadZone => AppSettings.Instance.ScrollDeadZone;
+        private static float StickSensitivity => AppSettings.Instance.StickSensitivity;
+        private static int KeyboardDeadZone => AppSettings.Instance.KeyboardDeadZone;
+        private static float StickAccelPower => AppSettings.Instance.StickAccelPower;
 
         private int _slotIndex;
         public int SlotIndex => _slotIndex;
@@ -109,7 +109,7 @@ namespace ControllerMagic
                     using var proc = Process.GetProcessById(pid);
                     string name = proc.ProcessName.ToLowerInvariant();
 
-                    if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome") || name.Contains("explorer"))
+                    if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome") || name.Contains("explorer") || name.Contains("recorder"))
                     {
                         return false;
                     }
@@ -255,14 +255,14 @@ namespace ControllerMagic
             bool RB_down = buttons.HasFlag(GamepadButtons.RightShoulder);
             bool Back_down = buttons.HasFlag(GamepadButtons.Back);
             bool Start_down = buttons.HasFlag(GamepadButtons.Start);
-            bool Up_down = buttons.HasFlag(GamepadButtons.DPadUp);
-            bool Down_down = buttons.HasFlag(GamepadButtons.DPadDown);
-            bool Left_down = buttons.HasFlag(GamepadButtons.DPadLeft);
-            bool Right_down = buttons.HasFlag(GamepadButtons.DPadRight);
+            //bool Up_down = buttons.HasFlag(GamepadButtons.DPadUp);
+            //bool Down_down = buttons.HasFlag(GamepadButtons.DPadDown);
+            //bool Left_down = buttons.HasFlag(GamepadButtons.DPadLeft);
+            //bool Right_down = buttons.HasFlag(GamepadButtons.DPadRight);
             bool LS_down = buttons.HasFlag(GamepadButtons.LeftThumb);
             bool RS_down = buttons.HasFlag(GamepadButtons.RightThumb);
 
-            bool A_pressed = A_down && !_prevButtons.HasFlag(GamepadButtons.A);
+            //bool A_pressed = A_down && !_prevButtons.HasFlag(GamepadButtons.A);
             bool B_pressed = B_down && !_prevButtons.HasFlag(GamepadButtons.B);
             bool X_pressed = X_down && !_prevButtons.HasFlag(GamepadButtons.X);
             bool Y_pressed = Y_down && !_prevButtons.HasFlag(GamepadButtons.Y);
@@ -270,10 +270,10 @@ namespace ControllerMagic
             bool RB_pressed = RB_down && !_prevButtons.HasFlag(GamepadButtons.RightShoulder);
             bool Back_pressed = Back_down && !_prevButtons.HasFlag(GamepadButtons.Back);
             bool Start_pressed = Start_down && !_prevButtons.HasFlag(GamepadButtons.Start);
-            bool Up_pressed = Up_down && !_prevButtons.HasFlag(GamepadButtons.DPadUp);
-            bool Down_pressed = Down_down && !_prevButtons.HasFlag(GamepadButtons.DPadDown);
-            bool Left_pressed = Left_down && !_prevButtons.HasFlag(GamepadButtons.DPadLeft);
-            bool Right_pressed = Right_down && !_prevButtons.HasFlag(GamepadButtons.DPadRight);
+            //bool Up_pressed = Up_down && !_prevButtons.HasFlag(GamepadButtons.DPadUp);
+            //bool Down_pressed = Down_down && !_prevButtons.HasFlag(GamepadButtons.DPadDown);
+            //bool Left_pressed = Left_down && !_prevButtons.HasFlag(GamepadButtons.DPadLeft);
+            //bool Right_pressed = Right_down && !_prevButtons.HasFlag(GamepadButtons.DPadRight);
             bool LS_pressed = LS_down && !_prevButtons.HasFlag(GamepadButtons.LeftThumb);
             bool RS_pressed = RS_down && !_prevButtons.HasFlag(GamepadButtons.RightThumb);
 
@@ -283,10 +283,10 @@ namespace ControllerMagic
             const ushort VK_BACK = 0x08; // Backspace
             const ushort VK_ESCAPE = 0x1B;
             const ushort VK_RETURN = 0x0D;
-            const ushort VK_LEFT = 0x25;
-            const ushort VK_UP = 0x26;
-            const ushort VK_RIGHT = 0x27;
-            const ushort VK_DOWN = 0x28;
+            //const ushort VK_LEFT = 0x25;
+            //const ushort VK_UP = 0x26;
+            //const ushort VK_RIGHT = 0x27;
+            //const ushort VK_DOWN = 0x28;
             const ushort VK_MEDIA_PLAY_PAUSE = 0xB3;
             const ushort VK_MEDIA_PREV_TRACK = 0xB1;
             const ushort VK_MEDIA_NEXT_TRACK = 0xB0;
@@ -320,14 +320,14 @@ namespace ControllerMagic
 
                 if (RB_pressed)
                     InputEmulator.SendKey(VK_MEDIA_NEXT_TRACK);
-                if (Up_pressed)
+/*                if (Up_pressed)
                     InputEmulator.SendKey(VK_UP);
                 if (Down_pressed)
                     InputEmulator.SendKey(VK_DOWN);
                 if (Left_pressed)
                     InputEmulator.SendKey(VK_LEFT);
                 if (Right_pressed)
-                    InputEmulator.SendKey(VK_RIGHT);
+                    InputEmulator.SendKey(VK_RIGHT);*/
                 if (RS_pressed)
                 {
                     InputEmulator.SendKey(VK_CTRL, true);
@@ -426,7 +426,7 @@ namespace ControllerMagic
 
         }
 
-        private void EmitDaisywheelKey(int layer, int sector, int index, bool pressed)
+        private static void EmitDaisywheelKey(int layer, int sector, int index, bool pressed)
         {
             if (!pressed)
                 return;
@@ -444,7 +444,7 @@ namespace ControllerMagic
             InputEmulator.SendKey(entry.Vk);
         }
 
-        private int GetEntryCount(int layer, int sector)
+        private static int GetEntryCount(int layer, int sector)
         {
             int count = 0;
             for (int i = 0; i < 4; i++)

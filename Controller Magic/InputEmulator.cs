@@ -67,12 +67,12 @@ namespace ControllerMagic
 
         const uint INPUT_MOUSE = 0;
         const uint INPUT_KEYBOARD = 1;
-        const uint MOUSEEVENTF_MOVE = 0x0001;
+        //const uint MOUSEEVENTF_MOVE = 0x0001;
         const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
         const uint MOUSEEVENTF_LEFTUP = 0x0004;
         const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
         const uint MOUSEEVENTF_RIGHTUP = 0x0010;
-        const uint MOUSEEVENTF_ABSOLUTE = 0x8000;   // add this
+        //const uint MOUSEEVENTF_ABSOLUTE = 0x8000;   // add this
         const uint KEYEVENTF_KEYUP = 0x0002;
 
         [DllImport("user32.dll", SetLastError = true)]
@@ -120,7 +120,7 @@ namespace ControllerMagic
             var inputs = new INPUT[1];
             inputs[0].type = INPUT_MOUSE;
             inputs[0].U.mi.dwFlags = pressed ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
-            SendInput(1, inputs, Marshal.SizeOf<INPUT>());
+            _ = SendInput(1, inputs, Marshal.SizeOf<INPUT>());
         }
         public static void SetRightButtonState(bool pressed)
         {
@@ -129,7 +129,7 @@ namespace ControllerMagic
             var inputs = new INPUT[1];
             inputs[0].type = INPUT_MOUSE;
             inputs[0].U.mi.dwFlags = pressed ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
-            SendInput(1, inputs, Marshal.SizeOf<INPUT>());
+            _ = SendInput(1, inputs, Marshal.SizeOf<INPUT>());
         }
         public static void LeftClick()
         {
@@ -141,7 +141,7 @@ namespace ControllerMagic
             inputs[1].type = INPUT_MOUSE;
             inputs[1].U.mi.dwFlags = MOUSEEVENTF_LEFTUP;
 
-            SendInput(2, inputs, Marshal.SizeOf<INPUT>());
+            _ = SendInput(2, inputs, Marshal.SizeOf<INPUT>());
         }
         public static void RightClick()
         {
@@ -153,7 +153,7 @@ namespace ControllerMagic
             inputs[1].type = INPUT_MOUSE;
             inputs[1].U.mi.dwFlags = MOUSEEVENTF_RIGHTUP;
 
-            SendInput(2, inputs, Marshal.SizeOf<INPUT>());
+            _ = SendInput(2, inputs, Marshal.SizeOf<INPUT>());
         }
 
 
@@ -169,7 +169,7 @@ namespace ControllerMagic
             inputs[1].U.ki.wVk = vk;
             inputs[1].U.ki.dwFlags = KEYEVENTF_KEYUP; // key up
 
-            SendInput(2, inputs, Marshal.SizeOf<INPUT>());
+            _ = SendInput(2, inputs, Marshal.SizeOf<INPUT>());
         }
 
         public static void SendKey(ushort vk, bool pressed)
@@ -182,7 +182,7 @@ namespace ControllerMagic
             if (!pressed)
                 inputs[0].U.ki.dwFlags = KEYEVENTF_KEYUP;
 
-            SendInput(1, inputs, Marshal.SizeOf<INPUT>());
+            _ = SendInput(1, inputs, Marshal.SizeOf<INPUT>());
         }
     }
 }

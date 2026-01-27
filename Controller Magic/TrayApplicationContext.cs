@@ -7,7 +7,7 @@ namespace ControllerMagic
         private readonly NotifyIcon _trayIcon;
         private readonly ControllerPoller _controllerPoller;
         private readonly KeyboardOverlayForm _overlay; // NEW
-        public TrayApplicationContext()
+        public TrayApplicationContext(ToolStripMenuItem bigPictureItem)
         {
             _trayIcon = new NotifyIcon
             {
@@ -19,7 +19,6 @@ namespace ControllerMagic
             var menu = new ContextMenuStrip();
 
             var settingsItem = new ToolStripMenuItem("Settings...", null, OnSettingsClick);
-            var bigPictureItem = new ToolStripMenuItem("Big Picture Mode");
             bigPictureItem.Enabled = false; // placeholder for future mode
 
             var restartItem = new ToolStripMenuItem("Restart", null, OnRestartClick);
