@@ -109,7 +109,7 @@ namespace ControllerMagic
                     using var proc = Process.GetProcessById(pid);
                     string name = proc.ProcessName.ToLowerInvariant();
 
-                    if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome") || name.Contains("explorer") || name.Contains("recorder"))
+                    if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome") || name.Contains("explorer") || name.Contains("recorder") || name.Contains("steam"))
                     {
                         return false;
                     }

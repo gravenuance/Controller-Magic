@@ -87,6 +87,11 @@ namespace ControllerMagic
         [DllImport("user32.dll")]
         private static extern int GetSystemMetrics(int nIndex); // [web:103]
 
+        private const int SM_XVIRTUALSCREEN = 76;
+        private const int SM_YVIRTUALSCREEN = 77;
+        private const int SM_CXVIRTUALSCREEN = 78;
+        private const int SM_CYVIRTUALSCREEN = 79;
+
         [StructLayout(LayoutKind.Sequential)]
         private struct POINT
         {
@@ -101,13 +106,18 @@ namespace ControllerMagic
             int targetX = p.X + dx;
             int targetY = p.Y + dy;
 
-            int screenWidth = GetSystemMetrics(0);  // SM_CXSCREEN
-            int screenHeight = GetSystemMetrics(1); // SM_CYSCREEN
+            int virtualLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+            int virtualTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
+            int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+            int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
 
-            if (targetX < 0) targetX = 0;
-            if (targetY < 0) targetY = 0;
-            if (targetX >= screenWidth) targetX = screenWidth - 1;
-            if (targetY >= screenHeight) targetY = screenHeight - 1;
+            int virtualRight = virtualLeft + virtualWidth - 1;
+            int virtualBottom = virtualTop + virtualHeight - 1;
+
+            if (targetX < virtualLeft) targetX = virtualLeft;
+            if (targetY < virtualTop) targetY = virtualTop;
+            if (targetX > virtualRight) targetX = virtualRight;
+            if (targetY > virtualBottom) targetY = virtualBottom;
 
             SetCursorPos(targetX, targetY);
         }
