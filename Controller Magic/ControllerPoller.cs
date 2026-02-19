@@ -34,6 +34,7 @@ namespace ControllerMagic
 
         private GamepadButtons _prevButtons;
         private static bool _watching;
+        private static bool _edge;
 
         public void Start()
         {
@@ -104,6 +105,7 @@ namespace ControllerMagic
                 if (!isFullscreen)
                 {
                     _watching = false;
+                    _edge = false;
                     return false;
                 }
                     
@@ -120,7 +122,7 @@ namespace ControllerMagic
                     }
                     else if (name.Contains("edge"))
                     {
-                        _watching = true;
+                        _edge = true;
                         return false;
                     }
                 }
@@ -129,6 +131,7 @@ namespace ControllerMagic
                 }
 
                 _watching = false;
+                _edge = false;
                 return true;
             }
         }
@@ -267,7 +270,6 @@ namespace ControllerMagic
             bool LS_down = buttons.HasFlag(GamepadButtons.LeftThumb);
             bool RS_down = buttons.HasFlag(GamepadButtons.RightThumb);
 
-            bool A_pressed = A_down && !_prevButtons.HasFlag(GamepadButtons.A);
             bool B_pressed = B_down && !_prevButtons.HasFlag(GamepadButtons.B);
             bool X_pressed = X_down && !_prevButtons.HasFlag(GamepadButtons.X);
             bool Y_pressed = Y_down && !_prevButtons.HasFlag(GamepadButtons.Y);
@@ -307,12 +309,12 @@ namespace ControllerMagic
                 if (!A_down && _prevButtons.HasFlag(GamepadButtons.A))
                     InputEmulator.SetLeftButtonState(false);
 
-                if (B_pressed && !_watching)
+                if (B_pressed && !_edge)
                     InputEmulator.SendKey(VK_BACK);
                 else if (B_pressed)
                     InputEmulator.SendKey(VK_ESCAPE);
 
-                if (X_pressed && !_watching)
+                if (X_pressed && !_edge)
                     InputEmulator.RightClick();
                 else if (X_pressed)
                     InputEmulator.SendKey(VK_S);
