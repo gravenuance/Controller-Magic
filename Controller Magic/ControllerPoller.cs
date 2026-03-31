@@ -6,6 +6,235 @@ namespace ControllerMagic
 {
     internal class ControllerPoller
     {
+        public struct KeyEntry
+        {
+            public ushort Vk;
+            public char Display;
+            public bool HasMod;
+
+            public KeyEntry(ushort vk, char display, bool hasMod)
+            {
+                Vk = vk;
+                Display = display;
+                HasMod = hasMod;
+            }
+            public KeyEntry(ushort vk, char display)
+            {
+                Vk = vk;
+                Display = display;
+                HasMod = false;
+            }
+        }
+
+        // VK aliases
+        private const ushort VK_0 = 0x30;
+        private const ushort VK_1 = 0x31;
+        private const ushort VK_2 = 0x32;
+        private const ushort VK_3 = 0x33;
+        private const ushort VK_4 = 0x34;
+        private const ushort VK_5 = 0x35;
+        private const ushort VK_6 = 0x36;
+        private const ushort VK_7 = 0x37;
+        private const ushort VK_8 = 0x38;
+        private const ushort VK_9 = 0x39;
+
+        // letters
+        private const ushort VK_A = 0x41;
+        private const ushort VK_B = 0x42;
+        private const ushort VK_C = 0x43;
+        private const ushort VK_D = 0x44;
+        private const ushort VK_E = 0x45;
+        private const ushort VK_F = 0x46;
+        private const ushort VK_G = 0x47;
+        private const ushort VK_H = 0x48;
+        private const ushort VK_I = 0x49;
+        private const ushort VK_J = 0x4A;
+        private const ushort VK_K = 0x4B;
+        private const ushort VK_L = 0x4C;
+        private const ushort VK_M = 0x4D;
+        private const ushort VK_N = 0x4E;
+        private const ushort VK_O = 0x4F;
+        private const ushort VK_P = 0x50;
+        private const ushort VK_Q = 0x51;
+        private const ushort VK_R = 0x52;
+        private const ushort VK_S = 0x53;
+        private const ushort VK_T = 0x54;
+        private const ushort VK_U = 0x55;
+        private const ushort VK_V = 0x56;
+        private const ushort VK_W = 0x57;
+        private const ushort VK_X = 0x58;
+        private const ushort VK_Y = 0x59;
+        private const ushort VK_Z = 0x5A;
+
+        // punctuation (US layout)
+        private const ushort VK_OEM_MINUS = 0xBD; // -
+        private const ushort VK_OEM_PLUS = 0xBB; // =
+        private const ushort VK_OEM_COMMA = 0xBC; // ,
+        private const ushort VK_OEM_PERIOD = 0xBE; // .
+        private const ushort VK_OEM_1 = 0xBA; // ; :
+        private const ushort VK_OEM_2 = 0xBF; // / ?
+        private const ushort VK_OEM_3 = 0xC0; // ` ~
+        private const ushort VK_OEM_4 = 0xDB; // [
+        private const ushort VK_OEM_5 = 0xDC; // \
+        private const ushort VK_OEM_6 = 0xDD; // ]
+        private const ushort VK_OEM_7 = 0xDE; // ' "
+
+        private static readonly KeyEntry[,,] Daisywheel =
+        {
+            {
+                {
+                    new KeyEntry(VK_E, 'e'),
+                    new KeyEntry(VK_R, 'r'),
+                    new KeyEntry(VK_G, 'g'),
+                    new KeyEntry(VK_Q,    'q'),
+                },
+
+                {
+                    new KeyEntry(VK_T, 't'),
+                    new KeyEntry(VK_D, 'd'),
+                    new KeyEntry(VK_Y, 'y'),
+                    new KeyEntry(VK_Z, 'z'),
+                },
+
+                {
+                    new KeyEntry(VK_A, 'a'),
+                    new KeyEntry(VK_L, 'l'),
+                    new KeyEntry(VK_P, 'p'),
+                    new KeyEntry(0,    '\0'),
+                },
+                {
+                    new KeyEntry(VK_O, 'o'),
+                    new KeyEntry(VK_C, 'c'),
+                    new KeyEntry(VK_B, 'b'),
+                    new KeyEntry(0,    '\0'),
+                },
+                {
+                    new KeyEntry(VK_I, 'i'),
+                    new KeyEntry(VK_U, 'u'),
+                    new KeyEntry(VK_V, 'v'),
+                    new KeyEntry(0,    '\0'),
+                },
+                {
+                    new KeyEntry(VK_N, 'n'),
+                    new KeyEntry(VK_M, 'm'),
+                    new KeyEntry(VK_K, 'k'),
+                    new KeyEntry(0,    '\0'),
+                },
+                {
+                    new KeyEntry(VK_S, 's'),
+                    new KeyEntry(VK_W, 'w'),
+                    new KeyEntry(VK_J, 'j'),
+                    new KeyEntry(0,    '\0'),
+                },
+                {
+                    new KeyEntry(VK_H, 'h'),
+                    new KeyEntry(VK_F, 'f'),
+                    new KeyEntry(VK_X, 'x'),
+                    new KeyEntry(0, '\0'),
+                },
+            },
+            {
+                {
+                    new KeyEntry(VK_1, '1'),
+                    new KeyEntry(VK_9, '9'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0,    '\0'),
+                },
+                {
+                    new KeyEntry(VK_2, '2'),
+                    new KeyEntry(VK_0, '0'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0,    '\0'),
+                },
+                {
+                    new KeyEntry(VK_3, '3'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0,    '\0'),
+                },
+                {
+                    new KeyEntry(VK_4, '4'),
+                    new KeyEntry(0,    '\0'),
+                    new KeyEntry(0,    '\0'),
+                    new KeyEntry(0,    '\0'),
+                },
+                {
+                    new KeyEntry(VK_5, '5'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0, '\0'),
+                },
+                {
+                    new KeyEntry(VK_6, '6'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0, '\0'),
+                },
+                {
+                    new KeyEntry(VK_7, '7'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0, '\0'),
+                },
+                {
+                    new KeyEntry(VK_8, '8'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0, '\0'),
+                    new KeyEntry(0, '\0'),
+                },
+            },
+            {
+                {
+                    new KeyEntry(VK_OEM_PERIOD, '.'),
+                    new KeyEntry(VK_OEM_COMMA,  ','),
+                    new KeyEntry(VK_OEM_2,      '?', true), // Shift+'/' for ? on US
+                    new KeyEntry(0,             '\0'),
+                },
+                {
+                    new KeyEntry(VK_1, '!', true),   // Shift+1
+                    new KeyEntry(VK_2, '@', true),   // Shift+2
+                    new KeyEntry(VK_3, '#', true),   // Shift+3
+                    new KeyEntry(0,    '\0'),
+                },
+                {
+                    new KeyEntry(VK_OEM_MINUS, '-'),
+                    new KeyEntry(VK_OEM_MINUS, '_', true), // with Shift
+                    new KeyEntry(VK_OEM_PLUS,  '+'),
+                    new KeyEntry(0,            '\0'),
+                },
+                {
+                    new KeyEntry(VK_OEM_PLUS, '='),
+                    new KeyEntry(VK_7,        '&', true), // Shift+7
+                    new KeyEntry(VK_8,        '*', true), // Shift+8
+                    new KeyEntry(0,           '\0'),
+                },
+                {
+                    new KeyEntry(VK_OEM_7, '\''),
+                    new KeyEntry(VK_OEM_7, '\"'),
+                    new KeyEntry(0,   '\0'),
+                    new KeyEntry(0,   '\0'),
+                },
+                {
+                    new KeyEntry(VK_OEM_1, ';'),
+                    new KeyEntry(VK_OEM_1, ':'),
+                    new KeyEntry(0,   '\0'),
+                    new KeyEntry(0,   '\0'),
+                },
+                {
+                    new KeyEntry(VK_9,       '(', true), // Shift+9
+                    new KeyEntry(VK_0,       ')', true), // Shift+0
+                    new KeyEntry(VK_OEM_4,   '['),
+                    new KeyEntry(0,          '\0'),
+                },
+                {
+                    new KeyEntry(VK_OEM_6, ']'),
+                    new KeyEntry(VK_OEM_5, '\\'),
+                    new KeyEntry(VK_OEM_3, '`'),
+                    new KeyEntry(0,        '\0'),
+                },
+            }
+        };
+
         private Thread? _thread;
         private bool _running;
 
@@ -108,7 +337,7 @@ namespace ControllerMagic
                     _edge = false;
                     return false;
                 }
-                    
+
                 GetWindowThreadProcessId(hWnd, out int pid);
                 try
                 {
@@ -118,11 +347,13 @@ namespace ControllerMagic
                     if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome") || name.Contains("explorer") || name.Contains("recorder") || name.Contains("steam"))
                     {
                         _watching = true;
+                        _edge = false;
                         return false;
                     }
                     else if (name.Contains("edge"))
                     {
                         _edge = true;
+                        _watching = false;
                         return false;
                     }
                 }
@@ -135,7 +366,6 @@ namespace ControllerMagic
                 return true;
             }
         }
-
 
         private void Loop()
         {
@@ -249,8 +479,7 @@ namespace ControllerMagic
                 }
             }
         }
-
-
+        public event Action<bool>? KeyboardModeChanged;
         private void ProcessButtons(Gamepad pad)
         {
             var buttons = pad.Buttons;
@@ -285,7 +514,11 @@ namespace ControllerMagic
             bool RS_pressed = RS_down && !_prevButtons.HasFlag(GamepadButtons.RightThumb);
 
             if (LS_pressed)
+            {
                 _keyboardMode = !_keyboardMode;
+                KeyboardModeChanged?.Invoke(_keyboardMode);
+            }
+                
 
             const ushort VK_BACK = 0x08; // Backspace
             const ushort VK_ESCAPE = 0x1B;
@@ -301,8 +534,6 @@ namespace ControllerMagic
 
             if (!_keyboardMode)
             {
-
-
                 if (A_down)
                     InputEmulator.SetLeftButtonState(true);
 
@@ -327,7 +558,7 @@ namespace ControllerMagic
 
                 if (RB_pressed)
                     InputEmulator.SendKey(VK_MEDIA_NEXT_TRACK);
-                if(_watching)
+                if (_watching || _edge)
                 {
                     if (Up_pressed)
                         InputEmulator.SendKey(VK_UP);
@@ -337,7 +568,7 @@ namespace ControllerMagic
                         InputEmulator.SendKey(VK_LEFT);
                     if (Right_pressed)
                         InputEmulator.SendKey(VK_RIGHT);
-                }                
+                }
                 if (RS_pressed)
                 {
                     InputEmulator.SendKey(VK_CTRL, true);
@@ -364,10 +595,6 @@ namespace ControllerMagic
             bool RB_down = buttons.HasFlag(GamepadButtons.RightShoulder);
             bool LB_pressed = LB_down && !_prevButtons.HasFlag(GamepadButtons.LeftShoulder);
             bool RB_pressed = RB_down && !_prevButtons.HasFlag(GamepadButtons.RightShoulder);
-
-
-
-
 
             bool A_down = buttons.HasFlag(GamepadButtons.A);
             bool B_down = buttons.HasFlag(GamepadButtons.B);
@@ -435,7 +662,6 @@ namespace ControllerMagic
             }
 
         }
-
         private static void EmitDaisywheelKey(int layer, int sector, int index, bool pressed)
         {
             if (!pressed)
@@ -444,7 +670,8 @@ namespace ControllerMagic
             var entry = Daisywheel[layer, sector, index];
             if (entry.Vk == 0)
                 return;
-            if (entry.HasMod) {
+            if (entry.HasMod)
+            {
                 const ushort VK_SHIFT = 0x10;
                 InputEmulator.SendKey(VK_SHIFT, true);
                 InputEmulator.SendKey(entry.Vk);
@@ -453,7 +680,6 @@ namespace ControllerMagic
             }
             InputEmulator.SendKey(entry.Vk);
         }
-
         private static int GetEntryCount(int layer, int sector)
         {
             int count = 0;
@@ -464,7 +690,6 @@ namespace ControllerMagic
             }
             return count;
         }
-
         private int GetSector(short lx, short ly)
         {
             int x = lx;
@@ -495,279 +720,5 @@ namespace ControllerMagic
             _currentSector = sector;
             return sector;
         }
-
-
-
-
-
-        public struct KeyEntry
-        {
-            public ushort Vk;
-            public char Display;
-            public bool HasMod;
-
-            public KeyEntry(ushort vk, char display, bool hasMod)
-            {
-                Vk = vk;
-                Display = display;
-                HasMod = hasMod;
-            }
-            public KeyEntry(ushort vk, char display)
-            {
-                Vk = vk;
-                Display = display;
-                HasMod = false;
-            }
-        }
-
-        // VK aliases
-        private const ushort VK_0 = 0x30;
-        private const ushort VK_1 = 0x31;
-        private const ushort VK_2 = 0x32;
-        private const ushort VK_3 = 0x33;
-        private const ushort VK_4 = 0x34;
-        private const ushort VK_5 = 0x35;
-        private const ushort VK_6 = 0x36;
-        private const ushort VK_7 = 0x37;
-        private const ushort VK_8 = 0x38;
-        private const ushort VK_9 = 0x39;
-
-        // letters
-        private const ushort VK_A = 0x41;
-        private const ushort VK_B = 0x42;
-        private const ushort VK_C = 0x43;
-        private const ushort VK_D = 0x44;
-        private const ushort VK_E = 0x45;
-        private const ushort VK_F = 0x46;
-        private const ushort VK_G = 0x47;
-        private const ushort VK_H = 0x48;
-        private const ushort VK_I = 0x49;
-        private const ushort VK_J = 0x4A;
-        private const ushort VK_K = 0x4B;
-        private const ushort VK_L = 0x4C;
-        private const ushort VK_M = 0x4D;
-        private const ushort VK_N = 0x4E;
-        private const ushort VK_O = 0x4F;
-        private const ushort VK_P = 0x50;
-        private const ushort VK_Q = 0x51;
-        private const ushort VK_R = 0x52;
-        private const ushort VK_S = 0x53;
-        private const ushort VK_T = 0x54;
-        private const ushort VK_U = 0x55;
-        private const ushort VK_V = 0x56;
-        private const ushort VK_W = 0x57;
-        private const ushort VK_X = 0x58;
-        private const ushort VK_Y = 0x59;
-        private const ushort VK_Z = 0x5A;
-
-        // punctuation (US layout)
-        private const ushort VK_OEM_MINUS = 0xBD; // -
-        private const ushort VK_OEM_PLUS = 0xBB; // =
-        private const ushort VK_OEM_COMMA = 0xBC; // ,
-        private const ushort VK_OEM_PERIOD = 0xBE; // .
-        private const ushort VK_OEM_1 = 0xBA; // ; :
-        private const ushort VK_OEM_2 = 0xBF; // / ?
-        private const ushort VK_OEM_3 = 0xC0; // ` ~
-        private const ushort VK_OEM_4 = 0xDB; // [
-        private const ushort VK_OEM_5 = 0xDC; // \
-        private const ushort VK_OEM_6 = 0xDD; // ]
-        private const ushort VK_OEM_7 = 0xDE; // ' "
-
-        private static readonly KeyEntry[,,] Daisywheel =
-        {
-    // ===== Layer 0: letters a–z =====
-    {
-                // 0 Up: e, t, a
-        {
-            new KeyEntry(VK_E, 'e'),
-            new KeyEntry(VK_R, 'r'),
-            new KeyEntry(VK_G, 'g'),
-            new KeyEntry(VK_Q,    'q'),
-        },
-        // 1 Up‑Right: o, i, n
-        {
-            new KeyEntry(VK_T, 't'),
-            new KeyEntry(VK_D, 'd'),
-            new KeyEntry(VK_Y, 'y'),
-            new KeyEntry(VK_Z, 'z'),
-        },
-        // 2 Right: s, r, h
-        {
-            new KeyEntry(VK_A, 'a'),
-            new KeyEntry(VK_L, 'l'),
-            new KeyEntry(VK_P, 'p'),
-            new KeyEntry(0,    '\0'),
-        },
-        // 3 Down‑Right: l, d, c
-        {
-            new KeyEntry(VK_O, 'o'),
-            new KeyEntry(VK_C, 'c'),
-            new KeyEntry(VK_B, 'b'),
-            new KeyEntry(0,    '\0'),
-        },
-        // 4 Down: u, m, w
-        {
-            new KeyEntry(VK_I, 'i'),
-            new KeyEntry(VK_U, 'u'),
-            new KeyEntry(VK_V, 'v'),
-            new KeyEntry(0,    '\0'),
-        },
-        // 5 Down‑Left: f, g, y
-        {
-            new KeyEntry(VK_N, 'n'),
-            new KeyEntry(VK_M, 'm'),
-            new KeyEntry(VK_K, 'k'),
-            new KeyEntry(0,    '\0'),
-        },
-        // 6 Left: p, b, v
-        {
-            new KeyEntry(VK_S, 's'),
-            new KeyEntry(VK_W, 'w'),
-            new KeyEntry(VK_J, 'j'),
-            new KeyEntry(0,    '\0'),
-        },
-        // 7 Up‑Left: k, j, x/z/q (rare)
-        {
-            new KeyEntry(VK_H, 'h'),
-            new KeyEntry(VK_F, 'f'),
-            new KeyEntry(VK_X, 'x'),
-            new KeyEntry(0, '\0'),
-        },
-    },
-
-    // ===== Layer 1: digits 0–9 =====
-    {
-        // 0 Up: 1, 2, 3
-        {
-            new KeyEntry(VK_1, '1'),
-            new KeyEntry(VK_9, '9'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0,    '\0'),
-        },
-        // 1 Up‑Right: 4, 5, 6
-        {
-            new KeyEntry(VK_2, '2'),
-            new KeyEntry(VK_0, '0'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0,    '\0'),
-        },
-        // 2 Right: 7, 8, 9
-        {
-            new KeyEntry(VK_3, '3'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0,    '\0'),
-        },
-        // 3 Down‑Right: 0
-        {
-            new KeyEntry(VK_4, '4'),
-            new KeyEntry(0,    '\0'),
-            new KeyEntry(0,    '\0'),
-            new KeyEntry(0,    '\0'),
-        },
-        // 4 Down: spare
-        {
-            new KeyEntry(VK_5, '5'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0, '\0'),
-        },
-        // 5 Down‑Left: spare
-        {
-            new KeyEntry(VK_6, '6'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0, '\0'),
-        },
-        // 6 Left: spare
-        {
-            new KeyEntry(VK_7, '7'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0, '\0'),
-        },
-        // 7 Up‑Left: spare
-        {
-            new KeyEntry(VK_8, '8'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0, '\0'),
-            new KeyEntry(0, '\0'),
-        },
-    },
-
-    // ===== Layer 2: punctuation / symbols =====
-    {
-        // 0 Up: . , ?  (most common)
-        {
-            new KeyEntry(VK_OEM_PERIOD, '.'),
-            new KeyEntry(VK_OEM_COMMA,  ','),
-            new KeyEntry(VK_OEM_2,      '?', true), // Shift+'/' for ? on US
-            new KeyEntry(0,             '\0'),
-        },
-        // 1 Up‑Right: ! @ #
-        {
-            new KeyEntry(VK_1, '!', true),   // Shift+1
-            new KeyEntry(VK_2, '@', true),   // Shift+2
-            new KeyEntry(VK_3, '#', true),   // Shift+3
-            new KeyEntry(0,    '\0'),
-        },
-        // 2 Right: - _ +
-        {
-            new KeyEntry(VK_OEM_MINUS, '-'),
-            new KeyEntry(VK_OEM_MINUS, '_', true), // with Shift
-            new KeyEntry(VK_OEM_PLUS,  '+'),
-            new KeyEntry(0,            '\0'),
-        },
-        // 3 Down‑Right: = & *
-        {
-            new KeyEntry(VK_OEM_PLUS, '='),
-            new KeyEntry(VK_7,        '&', true), // Shift+7
-            new KeyEntry(VK_8,        '*', true), // Shift+8
-            new KeyEntry(0,           '\0'),
-        },
-        // 4 Down: ' "
-        {
-            new KeyEntry(VK_OEM_7, '\''),
-            new KeyEntry(VK_OEM_7, '\"'),
-            new KeyEntry(0,   '\0'),
-            new KeyEntry(0,   '\0'),
-        },
-        // 5 Down‑Left: ; : :
-        {
-            new KeyEntry(VK_OEM_1, ';'),
-            new KeyEntry(VK_OEM_1, ':'),
-            new KeyEntry(0,   '\0'),
-            new KeyEntry(0,   '\0'),
-        },
-        // 6 Left: ( ) [
-        {
-            new KeyEntry(VK_9,       '(', true), // Shift+9
-            new KeyEntry(VK_0,       ')', true), // Shift+0
-            new KeyEntry(VK_OEM_4,   '['),
-            new KeyEntry(0,          '\0'),
-        },
-        // 7 Up‑Left: ] \ `
-        {
-            new KeyEntry(VK_OEM_6, ']'),
-            new KeyEntry(VK_OEM_5, '\\'),
-            new KeyEntry(VK_OEM_3, '`'),
-            new KeyEntry(0,        '\0'),
-        },
-    }
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     }
 }

@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace ControllerMagic
 {
@@ -21,7 +22,7 @@ namespace ControllerMagic
             BackColor = Color.Black;
             TransparencyKey = Color.Black;
 
-            StartPosition = FormStartPosition.CenterScreen;
+            StartPosition = FormStartPosition.Manual;
             Size = new Size(500, 500);
 
             DoubleBuffered = true;
@@ -47,8 +48,6 @@ namespace ControllerMagic
 
             var g = e.Graphics;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-
 
             if (!_poller.KeyboardMode)
                 return;

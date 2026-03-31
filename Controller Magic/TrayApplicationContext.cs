@@ -6,9 +6,13 @@ namespace ControllerMagic
     {
         private readonly NotifyIcon _trayIcon;
         private readonly ControllerPoller _controllerPoller;
-        private readonly KeyboardOverlayForm _overlay; // NEW
-        public TrayApplicationContext(ToolStripMenuItem bigPictureItem)
+        private readonly KeyboardOverlayForm _overlay;
+        private readonly SynchronizationContext _uiContext;
+        public TrayApplicationContext()
         {
+            _uiContext = SynchronizationContext.Current;
+            //?? throw new InvalidOperationException("No UI SynchronizationContext");
+
             _trayIcon = new NotifyIcon
             {
                 Icon = Properties.Resources.Controller,
@@ -19,13 +23,11 @@ namespace ControllerMagic
             var menu = new ContextMenuStrip();
 
             var settingsItem = new ToolStripMenuItem("Settings...", null, OnSettingsClick);
-            bigPictureItem.Enabled = false; // placeholder for future mode
 
             var restartItem = new ToolStripMenuItem("Restart", null, OnRestartClick);
             var exitItem = new ToolStripMenuItem("Exit", null, OnExitClick);
 
             menu.Items.Add(settingsItem);
-            menu.Items.Add(bigPictureItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(restartItem);
             menu.Items.Add(exitItem);
@@ -33,10 +35,47 @@ namespace ControllerMagic
             _trayIcon.ContextMenuStrip = menu;
 
             _controllerPoller = new ControllerPoller();
+            _controllerPoller.KeyboardModeChanged += OnKeyboardModeChanged;
             _controllerPoller.Start();
-
             _overlay = new KeyboardOverlayForm(_controllerPoller);
             _overlay.Show();
+        }
+
+        private void OnKeyboardModeChanged(bool enabled)
+        {
+            Debug.WriteLine($"OnKeyboardModeChanged enabled={enabled}");
+
+            if (_overlay.InvokeRequired)
+            {
+                _overlay.BeginInvoke(new Action(() => HandleKeyboardModeChanged(enabled)));
+            }
+            else
+            {
+                HandleKeyboardModeChanged(enabled);
+            }
+        }
+
+        private void HandleKeyboardModeChanged(bool enabled)
+        {
+            Debug.WriteLine($"HandleKeyboardModeChanged enabled={enabled}");
+
+            if (enabled)
+            {
+                PositionOverlayOnActiveMonitor(_overlay);
+            }
+
+        }
+
+        private void PositionOverlayOnActiveMonitor(Form form)
+        {
+            var cursorPos = Cursor.Position;
+            var activeScreen = Screen.FromPoint(cursorPos);
+            var bounds = activeScreen.WorkingArea;
+            form.StartPosition = FormStartPosition.Manual;
+            form.Location = new Point(
+                bounds.X + (bounds.Width - form.Width) / 2,
+                bounds.Y + (bounds.Height - form.Height) / 2
+            );
         }
 
         private void OnSettingsClick(object? sender, EventArgs e)

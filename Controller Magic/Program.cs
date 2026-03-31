@@ -13,7 +13,7 @@ namespace ControllerMagic
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            var context = new TrayApplicationContext(new ToolStripMenuItem("Big Picture Mode"));
+            var context = new TrayApplicationContext();
             Application.Run(context);
         }
     }

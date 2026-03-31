@@ -82,10 +82,10 @@ namespace ControllerMagic
         private static extern bool GetCursorPos(out POINT lpPoint);
 
         [DllImport("user32.dll")]
-        private static extern bool SetCursorPos(int X, int Y); // [web:93]
+        private static extern bool SetCursorPos(int X, int Y);
 
         [DllImport("user32.dll")]
-        private static extern int GetSystemMetrics(int nIndex); // [web:103]
+        private static extern int GetSystemMetrics(int nIndex);
 
         private const int SM_XVIRTUALSCREEN = 76;
         private const int SM_YVIRTUALSCREEN = 77;
