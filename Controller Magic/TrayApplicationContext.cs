@@ -8,10 +8,12 @@ namespace ControllerMagic
         private readonly ControllerPoller _controllerPoller;
         private readonly KeyboardOverlayForm _overlay;
         private readonly SynchronizationContext _uiContext;
+        private readonly RawInputPadReader _rawInputPadReader;
+        private readonly RawInputReceiverWindow _rawInputWindow;
+
         public TrayApplicationContext()
         {
-            _uiContext = SynchronizationContext.Current;
-            //?? throw new InvalidOperationException("No UI SynchronizationContext");
+            _uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
             _trayIcon = new NotifyIcon
             {
@@ -23,7 +25,6 @@ namespace ControllerMagic
             var menu = new ContextMenuStrip();
 
             var settingsItem = new ToolStripMenuItem("Settings...", null, OnSettingsClick);
-
             var restartItem = new ToolStripMenuItem("Restart", null, OnRestartClick);
             var exitItem = new ToolStripMenuItem("Exit", null, OnExitClick);
 
@@ -34,9 +35,13 @@ namespace ControllerMagic
 
             _trayIcon.ContextMenuStrip = menu;
 
-            _controllerPoller = new ControllerPoller();
+            _rawInputPadReader = new RawInputPadReader();
+            _rawInputWindow = new RawInputReceiverWindow(_rawInputPadReader);
+
+            _controllerPoller = new ControllerPoller(_rawInputPadReader);
             _controllerPoller.KeyboardModeChanged += OnKeyboardModeChanged;
             _controllerPoller.Start();
+
             _overlay = new KeyboardOverlayForm(_controllerPoller);
             _overlay.Show();
         }
@@ -63,7 +68,6 @@ namespace ControllerMagic
             {
                 PositionOverlayOnActiveMonitor(_overlay);
             }
-
         }
 
         private void PositionOverlayOnActiveMonitor(Form form)
@@ -71,6 +75,7 @@ namespace ControllerMagic
             var cursorPos = Cursor.Position;
             var activeScreen = Screen.FromPoint(cursorPos);
             var bounds = activeScreen.WorkingArea;
+
             form.StartPosition = FormStartPosition.Manual;
             form.Location = new Point(
                 bounds.X + (bounds.Width - form.Width) / 2,
@@ -87,11 +92,14 @@ namespace ControllerMagic
         private void OnRestartClick(object? sender, EventArgs e)
         {
             var exe = Application.ExecutablePath;
+
             try
             {
                 Process.Start(exe);
             }
-            catch { /* handle errors later */ }
+            catch
+            {
+            }
 
             ExitThread();
         }
@@ -103,11 +111,54 @@ namespace ControllerMagic
 
         protected override void ExitThreadCore()
         {
+            _controllerPoller.KeyboardModeChanged -= OnKeyboardModeChanged;
             _controllerPoller.Stop();
+
+            _rawInputWindow.Dispose();
+
             _overlay?.Close();
+
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
+
             base.ExitThreadCore();
+        }
+
+        private sealed class RawInputReceiverWindow : NativeWindow, IDisposable
+        {
+            private const int WM_INPUT = 0x00FF;
+
+            private readonly RawInputPadReader _rawInputPadReader;
+
+            public RawInputReceiverWindow(RawInputPadReader rawInputPadReader)
+            {
+                _rawInputPadReader = rawInputPadReader;
+
+                CreateHandle(new CreateParams
+                {
+                    Caption = "ControllerMagicRawInputSink"
+                });
+
+                _rawInputPadReader.Register(Handle);
+            }
+
+            protected override void WndProc(ref Message m)
+            {
+                if (m.Msg == WM_INPUT)
+                {
+                    _rawInputPadReader.ProcessWindowMessage(m.LParam);
+                }
+
+                base.WndProc(ref m);
+            }
+
+            public void Dispose()
+            {
+                if (Handle != IntPtr.Zero)
+                {
+                    DestroyHandle();
+                }
+            }
         }
     }
 }

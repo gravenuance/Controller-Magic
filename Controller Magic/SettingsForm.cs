@@ -17,11 +17,23 @@
             runAtStartupCheckBox.Checked = startupEnabled;
             UpdateStartupSwitchVisual();
 
-            deadZoneTrackBar.Value = AppSettings.Instance.StickDeadZone;
-            scrollDeadZoneTrackBar.Value = AppSettings.Instance.ScrollDeadZone;
-            keyboardDeadZoneTrackBar.Value = AppSettings.Instance.KeyboardDeadZone;
-            sensitivityTrackBar.Value = (int)(AppSettings.Instance.StickSensitivity * 100);
+            deadZoneTrackBar.Value = Clamp(deadZoneTrackBar, AppSettings.Instance.StickDeadZone);
+            scrollDeadZoneTrackBar.Value = Clamp(scrollDeadZoneTrackBar, AppSettings.Instance.ScrollDeadZone);
+            keyboardDeadZoneTrackBar.Value = Clamp(keyboardDeadZoneTrackBar, AppSettings.Instance.KeyboardDeadZone);
+
+            sensitivityTrackBar.Value = Clamp(
+                sensitivityTrackBar,
+                (int)Math.Round(AppSettings.Instance.StickSensitivity * 1000f));
+
+            UpdateDeadZoneLabels();
             UpdateSensitivityLabel();
+        }
+
+        private static int Clamp(TrackBar bar, int value)
+        {
+            if (value < bar.Minimum) return bar.Minimum;
+            if (value > bar.Maximum) return bar.Maximum;
+            return value;
         }
 
         private void UpdateStartupSwitchVisual()
@@ -58,31 +70,45 @@
         {
             AppSettings.Instance.StickDeadZone = deadZoneTrackBar.Value;
             AppSettings.Instance.Save();
+            UpdateDeadZoneLabels();
         }
 
         private void ScrollDeadZoneTrackBar_Scroll(object sender, EventArgs e)
         {
             AppSettings.Instance.ScrollDeadZone = scrollDeadZoneTrackBar.Value;
             AppSettings.Instance.Save();
+            UpdateDeadZoneLabels();
         }
 
         private void KeyboardDeadZoneTrackBar_Scroll(object sender, EventArgs e)
         {
             AppSettings.Instance.KeyboardDeadZone = keyboardDeadZoneTrackBar.Value;
             AppSettings.Instance.Save();
+            UpdateDeadZoneLabels();
         }
-
         private void SensitivityTrackBar_Scroll(object sender, EventArgs e)
         {
-            AppSettings.Instance.StickSensitivity = sensitivityTrackBar.Value / 100f;
+            AppSettings.Instance.StickSensitivity = sensitivityTrackBar.Value / 1000f;
             AppSettings.Instance.Save();
             UpdateSensitivityLabel();
         }
         private void UpdateSensitivityLabel()
         {
-            float factor = sensitivityTrackBar.Value / 100f;
-            sensitivityLabel.Text = $"Stick sensitivity (x{factor:0.00})";
+            float value = sensitivityTrackBar.Value / 1000f;
+            string note =
+                value < 0.012f ? "slow" :
+                value < 0.028f ? "balanced" :
+                value < 0.040f ? "fast" : "very fast";
+
+            sensitivityLabel.Text = $"Stick sensitivity ({value:0.000} - {note})";
         }
+        private void UpdateDeadZoneLabels()
+        {
+            deadZoneLabel.Text = $"Stick deadzone (move): {deadZoneTrackBar.Value}";
+            scrollDeadZoneLabel.Text = $"Stick deadzone (scroll): {scrollDeadZoneTrackBar.Value}";
+            keyboardDeadZoneLabel.Text = $"Stick deadzone (keyboard): {keyboardDeadZoneTrackBar.Value}";
+        }
+
 
 
         private bool _dragging;

@@ -9,14 +9,14 @@ namespace ControllerMagic
         // All deadzone modifiers
         public int StickDeadZone { get; set; } = 4000;
         public int ScrollDeadZone { get; set; } = 4000;
-        public int KeyboardDeadZone { get; set; } = 4000;
+        public int KeyboardDeadZone { get; set; } = 6000;
 
         // Stick sensitivity
-        public float StickSensitivity { get; set; } = 0.02f;
+        public float StickSensitivity { get; set; } = 0.015f;
 
         public bool RunAtStartup { get; set; } = false;
 
-        public float StickAccelPower { get; set; } = 0.1f;
+        public float StickAccelPower { get; set; } = 0.05f;
 
         private static string SettingsPath =>
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");

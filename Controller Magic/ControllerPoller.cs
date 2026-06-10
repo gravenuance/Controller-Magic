@@ -1,11 +1,15 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Vortice.XInput;
 
 namespace ControllerMagic
 {
     internal class ControllerPoller
     {
+        private readonly RawInputPadReader _rawInputReader;
+        public ControllerPoller(RawInputPadReader rawInputReader)
+        {
+            _rawInputReader = rawInputReader;
+        }
         public struct KeyEntry
         {
             public ushort Vk;
@@ -261,16 +265,13 @@ namespace ControllerMagic
         private int _slotIndex;
         public int SlotIndex => _slotIndex;
 
-        private GamepadButtons _prevButtons;
+        private PadButtons _prevButtons;
         private static bool _watching;
         private static bool _edge;
 
         public void Start()
         {
             if (_running) return;
-
-            if (!XInput.GetCapabilities(0, DeviceQueryType.Any, out _))
-                return;
 
             _running = true;
             _thread = new Thread(Loop)
@@ -377,25 +378,32 @@ namespace ControllerMagic
                     continue;
                 }
 
-                if (XInput.GetState(0, out var state))
+                PadState? pad = null;
+
+                if (XInputPadReader.TryRead(0, out var xpad))
                 {
-                    var pad = state.Gamepad;
+                    pad = xpad;
+                }
+                else if (_rawInputReader.TryGetLatest(out var rawPad))
+                {
+                    pad = rawPad;
+                }
 
-
-
+                if (pad is PadState state && state.IsConnected)
+                {
                     if (_keyboardMode)
-                        ProcessKeyboardMode(pad);
+                        ProcessKeyboardMode(state);
                     else
-                        ProcessSticks(pad);
+                        ProcessSticks(state);
 
-                    ProcessButtons(pad);
+                    ProcessButtons(state);
                 }
 
                 Thread.Sleep(8);
             }
         }
 
-        private void ProcessSticks(Gamepad pad)
+        private void ProcessSticks(PadState pad)
         {
             var lx = pad.LeftThumbX;
             var ly = pad.LeftThumbY;
@@ -480,38 +488,38 @@ namespace ControllerMagic
             }
         }
         public event Action<bool>? KeyboardModeChanged;
-        private void ProcessButtons(Gamepad pad)
+        private void ProcessButtons(PadState pad)
         {
             var buttons = pad.Buttons;
 
-            bool A_down = buttons.HasFlag(GamepadButtons.A);
-            bool B_down = buttons.HasFlag(GamepadButtons.B);
-            bool X_down = buttons.HasFlag(GamepadButtons.X);
-            bool Y_down = buttons.HasFlag(GamepadButtons.Y);
-            bool LB_down = buttons.HasFlag(GamepadButtons.LeftShoulder);
-            bool RB_down = buttons.HasFlag(GamepadButtons.RightShoulder);
-            bool Back_down = buttons.HasFlag(GamepadButtons.Back);
-            bool Start_down = buttons.HasFlag(GamepadButtons.Start);
-            bool Up_down = buttons.HasFlag(GamepadButtons.DPadUp);
-            bool Down_down = buttons.HasFlag(GamepadButtons.DPadDown);
-            bool Left_down = buttons.HasFlag(GamepadButtons.DPadLeft);
-            bool Right_down = buttons.HasFlag(GamepadButtons.DPadRight);
-            bool LS_down = buttons.HasFlag(GamepadButtons.LeftThumb);
-            bool RS_down = buttons.HasFlag(GamepadButtons.RightThumb);
+            bool A_down = buttons.HasFlag(PadButtons.A);
+            bool B_down = buttons.HasFlag(PadButtons.B);
+            bool X_down = buttons.HasFlag(PadButtons.X);
+            bool Y_down = buttons.HasFlag(PadButtons.Y);
+            bool LB_down = buttons.HasFlag(PadButtons.LeftShoulder);
+            bool RB_down = buttons.HasFlag(PadButtons.RightShoulder);
+            bool Back_down = buttons.HasFlag(PadButtons.Back);
+            bool Start_down = buttons.HasFlag(PadButtons.Start);
+            bool Up_down = buttons.HasFlag(PadButtons.DPadUp);
+            bool Down_down = buttons.HasFlag(PadButtons.DPadDown);
+            bool Left_down = buttons.HasFlag(PadButtons.DPadLeft);
+            bool Right_down = buttons.HasFlag(PadButtons.DPadRight);
+            bool LS_down = buttons.HasFlag(PadButtons.LeftThumb);
+            bool RS_down = buttons.HasFlag(PadButtons.RightThumb);
 
-            bool B_pressed = B_down && !_prevButtons.HasFlag(GamepadButtons.B);
-            bool X_pressed = X_down && !_prevButtons.HasFlag(GamepadButtons.X);
-            bool Y_pressed = Y_down && !_prevButtons.HasFlag(GamepadButtons.Y);
-            bool LB_pressed = LB_down && !_prevButtons.HasFlag(GamepadButtons.LeftShoulder);
-            bool RB_pressed = RB_down && !_prevButtons.HasFlag(GamepadButtons.RightShoulder);
-            bool Back_pressed = Back_down && !_prevButtons.HasFlag(GamepadButtons.Back);
-            bool Start_pressed = Start_down && !_prevButtons.HasFlag(GamepadButtons.Start);
-            bool Up_pressed = Up_down && !_prevButtons.HasFlag(GamepadButtons.DPadUp);
-            bool Down_pressed = Down_down && !_prevButtons.HasFlag(GamepadButtons.DPadDown);
-            bool Left_pressed = Left_down && !_prevButtons.HasFlag(GamepadButtons.DPadLeft);
-            bool Right_pressed = Right_down && !_prevButtons.HasFlag(GamepadButtons.DPadRight);
-            bool LS_pressed = LS_down && !_prevButtons.HasFlag(GamepadButtons.LeftThumb);
-            bool RS_pressed = RS_down && !_prevButtons.HasFlag(GamepadButtons.RightThumb);
+            bool B_pressed = B_down && !_prevButtons.HasFlag(PadButtons.B);
+            bool X_pressed = X_down && !_prevButtons.HasFlag(PadButtons.X);
+            bool Y_pressed = Y_down && !_prevButtons.HasFlag(PadButtons.Y);
+            bool LB_pressed = LB_down && !_prevButtons.HasFlag(PadButtons.LeftShoulder);
+            bool RB_pressed = RB_down && !_prevButtons.HasFlag(PadButtons.RightShoulder);
+            bool Back_pressed = Back_down && !_prevButtons.HasFlag(PadButtons.Back);
+            bool Start_pressed = Start_down && !_prevButtons.HasFlag(PadButtons.Start);
+            bool Up_pressed = Up_down && !_prevButtons.HasFlag(PadButtons.DPadUp);
+            bool Down_pressed = Down_down && !_prevButtons.HasFlag(PadButtons.DPadDown);
+            bool Left_pressed = Left_down && !_prevButtons.HasFlag(PadButtons.DPadLeft);
+            bool Right_pressed = Right_down && !_prevButtons.HasFlag(PadButtons.DPadRight);
+            bool LS_pressed = LS_down && !_prevButtons.HasFlag(PadButtons.LeftThumb);
+            bool RS_pressed = RS_down && !_prevButtons.HasFlag(PadButtons.RightThumb);
 
             if (LS_pressed)
             {
@@ -537,7 +545,7 @@ namespace ControllerMagic
                 if (A_down)
                     InputEmulator.SetLeftButtonState(true);
 
-                if (!A_down && _prevButtons.HasFlag(GamepadButtons.A))
+                if (!A_down && _prevButtons.HasFlag(PadButtons.A))
                     InputEmulator.SetLeftButtonState(false);
 
                 if (B_pressed && !_edge)
@@ -587,30 +595,30 @@ namespace ControllerMagic
 
 
         }
-        private void ProcessKeyboardMode(Gamepad pad)
+        private void ProcessKeyboardMode(PadState pad)
         {
             var buttons = pad.Buttons;
 
-            bool LB_down = buttons.HasFlag(GamepadButtons.LeftShoulder);
-            bool RB_down = buttons.HasFlag(GamepadButtons.RightShoulder);
-            bool LB_pressed = LB_down && !_prevButtons.HasFlag(GamepadButtons.LeftShoulder);
-            bool RB_pressed = RB_down && !_prevButtons.HasFlag(GamepadButtons.RightShoulder);
+            bool LB_down = buttons.HasFlag(PadButtons.LeftShoulder);
+            bool RB_down = buttons.HasFlag(PadButtons.RightShoulder);
+            bool LB_pressed = LB_down && !_prevButtons.HasFlag(PadButtons.LeftShoulder);
+            bool RB_pressed = RB_down && !_prevButtons.HasFlag(PadButtons.RightShoulder);
 
-            bool A_down = buttons.HasFlag(GamepadButtons.A);
-            bool B_down = buttons.HasFlag(GamepadButtons.B);
-            bool X_down = buttons.HasFlag(GamepadButtons.X);
-            bool Y_down = buttons.HasFlag(GamepadButtons.Y);
+            bool A_down = buttons.HasFlag(PadButtons.A);
+            bool B_down = buttons.HasFlag(PadButtons.B);
+            bool X_down = buttons.HasFlag(PadButtons.X);
+            bool Y_down = buttons.HasFlag(PadButtons.Y);
 
-            bool A_pressed = A_down && !_prevButtons.HasFlag(GamepadButtons.A);
-            bool B_pressed = B_down && !_prevButtons.HasFlag(GamepadButtons.B);
-            bool X_pressed = X_down && !_prevButtons.HasFlag(GamepadButtons.X);
-            bool Y_pressed = Y_down && !_prevButtons.HasFlag(GamepadButtons.Y);
+            bool A_pressed = A_down && !_prevButtons.HasFlag(PadButtons.A);
+            bool B_pressed = B_down && !_prevButtons.HasFlag(PadButtons.B);
+            bool X_pressed = X_down && !_prevButtons.HasFlag(PadButtons.X);
+            bool Y_pressed = Y_down && !_prevButtons.HasFlag(PadButtons.Y);
 
-            bool Left_down = buttons.HasFlag(GamepadButtons.DPadLeft);
-            bool Right_down = buttons.HasFlag(GamepadButtons.DPadRight);
+            bool Left_down = buttons.HasFlag(PadButtons.DPadLeft);
+            bool Right_down = buttons.HasFlag(PadButtons.DPadRight);
 
-            bool Left_pressed = Left_down && !_prevButtons.HasFlag(GamepadButtons.DPadLeft);
-            bool Right_pressed = Right_down && !_prevButtons.HasFlag(GamepadButtons.DPadRight);
+            bool Left_pressed = Left_down && !_prevButtons.HasFlag(PadButtons.DPadLeft);
+            bool Right_pressed = Right_down && !_prevButtons.HasFlag(PadButtons.DPadRight);
 
             const ushort VK_BACK = 0x08;
             const ushort VK_SPACE = 0x20;

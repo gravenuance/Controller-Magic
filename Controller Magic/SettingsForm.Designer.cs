@@ -139,23 +139,22 @@ namespace ControllerMagic
             this.keyboardDeadZoneTrackBar.Size = new System.Drawing.Size(430, 45);
             this.keyboardDeadZoneTrackBar.TabIndex = 6;
             this.keyboardDeadZoneTrackBar.Scroll += new System.EventHandler(this.KeyboardDeadZoneTrackBar_Scroll);
-            // 
             // sensitivityLabel
-            // 
             this.sensitivityLabel.AutoSize = true;
             this.sensitivityLabel.ForeColor = System.Drawing.Color.Lime;
             this.sensitivityLabel.Location = new System.Drawing.Point(20, 260);
             this.sensitivityLabel.Name = "sensitivityLabel";
-            this.sensitivityLabel.Size = new System.Drawing.Size(143, 15);
+            this.sensitivityLabel.Size = new System.Drawing.Size(144, 15);
             this.sensitivityLabel.TabIndex = 7;
-            this.sensitivityLabel.Text = "Stick sensitivity (x1.00)";
-            // 
+            this.sensitivityLabel.Text = "Stick sensitivity (0.020)";
+
             // sensitivityTrackBar
-            // 
             this.sensitivityTrackBar.Location = new System.Drawing.Point(20, 280);
-            this.sensitivityTrackBar.Minimum = 1;
-            this.sensitivityTrackBar.Maximum = 5;
-            this.sensitivityTrackBar.TickFrequency = 1;
+            this.sensitivityTrackBar.Minimum = 5;      // 0.005
+            this.sensitivityTrackBar.Maximum = 60;     // 0.060
+            this.sensitivityTrackBar.TickFrequency = 5; // 0.005 steps visually
+            this.sensitivityTrackBar.SmallChange = 1;   // 0.001
+            this.sensitivityTrackBar.LargeChange = 5;   // 0.005
             this.sensitivityTrackBar.Name = "sensitivityTrackBar";
             this.sensitivityTrackBar.Size = new System.Drawing.Size(430, 45);
             this.sensitivityTrackBar.TabIndex = 8;
