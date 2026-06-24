@@ -252,6 +252,9 @@ namespace ControllerMagic
         private int _keyboardLayer;
         private int _currentSector;
 
+        private bool _ltWasDown;
+        private bool _rtWasDown;
+
         public bool KeyboardMode => _keyboardMode;
         public int KeyboardLayer => _keyboardLayer;
         public int CurrentSector => _currentSector;
@@ -599,10 +602,32 @@ namespace ControllerMagic
         {
             var buttons = pad.Buttons;
 
+            const byte TriggerPressThreshold = 160;
+            const byte TriggerReleaseThreshold = 120;
+
             bool LB_down = buttons.HasFlag(PadButtons.LeftShoulder);
             bool RB_down = buttons.HasFlag(PadButtons.RightShoulder);
             bool LB_pressed = LB_down && !_prevButtons.HasFlag(PadButtons.LeftShoulder);
             bool RB_pressed = RB_down && !_prevButtons.HasFlag(PadButtons.RightShoulder);
+
+            byte LT_raw = pad.LeftTrigger;
+            byte RT_raw = pad.RightTrigger;
+
+            // down state with simple hysteresis: once down, stay down until clearly released
+            bool LT_down = _ltWasDown
+                ? (LT_raw > TriggerReleaseThreshold)
+                : (LT_raw >= TriggerPressThreshold);
+
+            bool RT_down = _rtWasDown
+                ? (RT_raw > TriggerReleaseThreshold)
+                : (RT_raw >= TriggerPressThreshold);
+
+            // edge: only once per pull above the press threshold
+            bool LT_pressed = LT_down && !_ltWasDown;
+            bool RT_pressed = RT_down && !_rtWasDown;
+
+            _ltWasDown = LT_down;
+            _rtWasDown = RT_down;
 
             bool A_down = buttons.HasFlag(PadButtons.A);
             bool B_down = buttons.HasFlag(PadButtons.B);
@@ -624,10 +649,16 @@ namespace ControllerMagic
             const ushort VK_SPACE = 0x20;
             const ushort VK_PERIOD = 0xBE;
 
-            if (Left_pressed)
+            if (Left_pressed || LT_pressed) {
                 _keyboardLayer = (_keyboardLayer + 2) % 3;   // backwards (0<-1<-2)
-            if (Right_pressed)
+                _slotIndex = 0;
+            }
+            if (Right_pressed || RT_pressed) { 
                 _keyboardLayer = (_keyboardLayer + 1) % 3;   // forwards (0->1->2)
+                _slotIndex = 0;
+            }
+
+
 
             if (X_pressed)
             {

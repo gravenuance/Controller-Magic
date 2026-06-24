@@ -22,12 +22,12 @@ internal sealed class RawInputPadReader
 
     public void Register(IntPtr hwnd)
     {
-        Debug.WriteLine($"[RAW] Register hwnd=0x{hwnd.ToInt64():X}");
+        //Debug.WriteLine($"[RAW] Register hwnd=0x{hwnd.ToInt64():X}");
 
         RawInputDevice.RegisterDevice(HidUsageAndPage.GamePad, RawInputDeviceFlags.ExInputSink, hwnd);
         RawInputDevice.RegisterDevice(HidUsageAndPage.Joystick, RawInputDeviceFlags.ExInputSink, hwnd);
 
-        Debug.WriteLine("[RAW] Register complete for GamePad + Joystick");
+        //Debug.WriteLine("[RAW] Register complete for GamePad + Joystick");
     }
 
     public bool TryGetLatest(out PadState state)
@@ -39,7 +39,7 @@ internal sealed class RawInputPadReader
                 if ((DateTime.UtcNow - _lastNoStateLogUtc).TotalSeconds >= 2)
                 {
                     _lastNoStateLogUtc = DateTime.UtcNow;
-                    Debug.WriteLine("[RAW] TryGetLatest: no state available");
+                    //Debug.WriteLine("[RAW] TryGetLatest: no state available");
                 }
 
                 state = default;
@@ -49,7 +49,7 @@ internal sealed class RawInputPadReader
             double ageSeconds = (DateTime.UtcNow - _lastUpdateUtc).TotalSeconds;
             if (ageSeconds > 2.0)
             {
-                Debug.WriteLine($"[RAW] TryGetLatest: state expired age={ageSeconds:F2}s");
+                //Debug.WriteLine($"[RAW] TryGetLatest: state expired age={ageSeconds:F2}s");
 
                 _latest = default;
                 _hasState = false;
@@ -62,10 +62,10 @@ internal sealed class RawInputPadReader
             if ((DateTime.UtcNow - _lastConnectedLogUtc).TotalSeconds >= 1)
             {
                 _lastConnectedLogUtc = DateTime.UtcNow;
-                Debug.WriteLine(
-                    $"[RAW] TryGetLatest: connected buttons={state.Buttons} " +
-                    $"LX={state.LeftThumbX} LY={state.LeftThumbY} RX={state.RightThumbX} RY={state.RightThumbY} " +
-                    $"L2={state.LeftTrigger} R2={state.RightTrigger}");
+                //Debug.WriteLine(
+                //    $"[RAW] TryGetLatest: connected buttons={state.Buttons} " +
+                //    $"LX={state.LeftThumbX} LY={state.LeftThumbY} RX={state.RightThumbX} RY={state.RightThumbY} " +
+                //    $"L2={state.LeftTrigger} R2={state.RightTrigger}");
             }
 
             return state.IsConnected;
@@ -83,21 +83,21 @@ internal sealed class RawInputPadReader
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[RAW] Packet {packetId}: FromHandle failed: {ex}");
+            //Debug.WriteLine($"[RAW] Packet {packetId}: FromHandle failed: {ex}");
             return;
         }
 
-        Debug.WriteLine($"[RAW] Packet {packetId}: dataType={data.GetType().FullName}");
+        //Debug.WriteLine($"[RAW] Packet {packetId}: dataType={data.GetType().FullName}");
 
         if (data is not RawInputHidData hid)
         {
-            Debug.WriteLine($"[RAW] Packet {packetId}: ignored non-HID input");
+            //Debug.WriteLine($"[RAW] Packet {packetId}: ignored non-HID input");
             return;
         }
 
         if (!TryTranslateHid(hid, out var state))
         {
-            Debug.WriteLine($"[RAW] Packet {packetId}: HID received but translation failed");
+            //Debug.WriteLine($"[RAW] Packet {packetId}: HID received but translation failed");
             return;
         }
 
@@ -108,10 +108,10 @@ internal sealed class RawInputPadReader
             _lastUpdateUtc = DateTime.UtcNow;
         }
 
-        Debug.WriteLine(
-            $"[RAW] Packet {packetId}: state accepted buttons={state.Buttons} " +
-            $"LX={state.LeftThumbX} LY={state.LeftThumbY} RX={state.RightThumbX} RY={state.RightThumbY} " +
-            $"L2={state.LeftTrigger} R2={state.RightTrigger}");
+        //Debug.WriteLine(
+        //    $"[RAW] Packet {packetId}: state accepted buttons={state.Buttons} " +
+        //    $"LX={state.LeftThumbX} LY={state.LeftThumbY} RX={state.RightThumbX} RY={state.RightThumbY} " +
+        //    $"L2={state.LeftTrigger} R2={state.RightTrigger}");
     }
 
     private static bool TryTranslateHid(RawInputHidData hid, out PadState state)
@@ -121,30 +121,30 @@ internal sealed class RawInputPadReader
         var device = hid.Device;
         if (device is null)
         {
-            Debug.WriteLine("[RAW] TryTranslateHid: device is null");
+            //Debug.WriteLine("[RAW] TryTranslateHid: device is null");
             return false;
         }
 
         string devicePath = device.DevicePath ?? "<null>";
-        Debug.WriteLine($"[RAW] TryTranslateHid: path={devicePath}");
+        //Debug.WriteLine($"[RAW] TryTranslateHid: path={devicePath}");
 
         if (!TryGetVendorProductId(device, out ushort vendorId, out ushort productId))
         {
-            Debug.WriteLine("[RAW] TryTranslateHid: VID/PID parse failed");
+            //Debug.WriteLine("[RAW] TryTranslateHid: VID/PID parse failed");
             return false;
         }
 
-        Debug.WriteLine($"[RAW] TryTranslateHid: VID=0x{vendorId:X4} PID=0x{productId:X4}");
+        //Debug.WriteLine($"[RAW] TryTranslateHid: VID=0x{vendorId:X4} PID=0x{productId:X4}");
 
         if (vendorId == SonyVendorId &&
             (productId == DualShock4ProductIdGen1 || productId == DualShock4ProductIdGen2))
         {
             bool ok = TryTranslateDualShock4(hid, out state);
-            Debug.WriteLine($"[RAW] TryTranslateHid: DS4 translate result={ok}");
+            //Debug.WriteLine($"[RAW] TryTranslateHid: DS4 translate result={ok}");
             return ok;
         }
 
-        Debug.WriteLine("[RAW] TryTranslateHid: unsupported device");
+        //Debug.WriteLine("[RAW] TryTranslateHid: unsupported device");
         return false;
     }
 
@@ -156,7 +156,7 @@ internal sealed class RawInputPadReader
         string? devicePath = device.DevicePath;
         if (string.IsNullOrWhiteSpace(devicePath))
         {
-            Debug.WriteLine("[RAW] TryGetVendorProductId: empty device path");
+            //Debug.WriteLine("[RAW] TryGetVendorProductId: empty device path");
             return false;
         }
 
@@ -166,7 +166,7 @@ internal sealed class RawInputPadReader
         if (TryParseTaggedHex(upper, "VID_", 4, out vendorId) &&
             TryParseTaggedHex(upper, "PID_", 4, out productId))
         {
-            Debug.WriteLine($"[RAW] TryGetVendorProductId: matched USB form VID=0x{vendorId:X4} PID=0x{productId:X4}");
+            //Debug.WriteLine($"[RAW] TryGetVendorProductId: matched USB form VID=0x{vendorId:X4} PID=0x{productId:X4}");
             return true;
         }
 
@@ -174,11 +174,11 @@ internal sealed class RawInputPadReader
         if (TryParseTaggedHexTail(upper, "VID&", 8, 4, out vendorId) &&
             TryParseTaggedHex(upper, "PID&", 4, out productId))
         {
-            Debug.WriteLine($"[RAW] TryGetVendorProductId: matched BT form VID=0x{vendorId:X4} PID=0x{productId:X4}");
+            //Debug.WriteLine($"[RAW] TryGetVendorProductId: matched BT form VID=0x{vendorId:X4} PID=0x{productId:X4}");
             return true;
         }
 
-        Debug.WriteLine($"[RAW] TryGetVendorProductId: unsupported path format path={devicePath}");
+        //Debug.WriteLine($"[RAW] TryGetVendorProductId: unsupported path format path={devicePath}");
         return false;
     }
 
@@ -232,24 +232,24 @@ internal sealed class RawInputPadReader
 
         if (!TryExtractReportBytes(hid.Hid, out var report))
         {
-            Debug.WriteLine("[RAW] TryTranslateDualShock4: report extraction failed");
+            //Debug.WriteLine("[RAW] TryTranslateDualShock4: report extraction failed");
             return false;
         }
 
-        Debug.WriteLine($"[RAW] TryTranslateDualShock4: reportLen={report.Length} bytes={BitConverter.ToString(report, 0, Math.Min(report.Length, 16))}");
+        //Debug.WriteLine($"[RAW] TryTranslateDualShock4: reportLen={report.Length} bytes={BitConverter.ToString(report, 0, Math.Min(report.Length, 16))}");
 
         if (report.Length < 8)
         {
-            Debug.WriteLine("[RAW] TryTranslateDualShock4: report too short");
+            //Debug.WriteLine("[RAW] TryTranslateDualShock4: report too short");
             return false;
         }
 
         int offset = GetDs4ReportOffset(report);
-        Debug.WriteLine($"[RAW] TryTranslateDualShock4: offset={offset}");
+        //Debug.WriteLine($"[RAW] TryTranslateDualShock4: offset={offset}");
 
         if (report.Length < offset + 8)
         {
-            Debug.WriteLine("[RAW] TryTranslateDualShock4: report too short after offset");
+            //Debug.WriteLine("[RAW] TryTranslateDualShock4: report too short after offset");
             return false;
         }
 
@@ -259,12 +259,12 @@ internal sealed class RawInputPadReader
         byte ry = report[offset + 3];
         byte b4 = report[offset + 4];
         byte b5 = report[offset + 5];
-        byte l2 = report[offset + 6];
-        byte r2 = report[offset + 7];
+        byte l2 = report[offset + 7];
+        byte r2 = report[offset + 8];
 
         if ((b4 & 0x0F) > 8)
         {
-            Debug.WriteLine($"[RAW] TryTranslateDualShock4: invalid dpad nibble b4=0x{b4:X2} offset={offset}");
+            //Debug.WriteLine($"[RAW] TryTranslateDualShock4: invalid dpad nibble b4=0x{b4:X2} offset={offset}");
             return false;
         }
 
@@ -282,7 +282,14 @@ internal sealed class RawInputPadReader
         if ((b5 & 0x40) != 0) buttons |= PadButtons.LeftThumb;
         if ((b5 & 0x80) != 0) buttons |= PadButtons.RightThumb;
 
-        MapDs4Dpad(b4 & 0x0F, ref buttons);
+        int dpadNibble = b4 & 0x0F;
+        if (dpadNibble < 0 || dpadNibble > 8)
+        {
+            //Debug.WriteLine($"[RAW] TryTranslateDualShock4: clamping invalid dpad nibble b4=0x{b4:X2} to neutral");
+            dpadNibble = 8;
+        }
+
+        MapDs4Dpad(dpadNibble, ref buttons);
 
         state = new PadState
         {
@@ -296,7 +303,11 @@ internal sealed class RawInputPadReader
             Buttons = buttons
         };
 
-        Debug.WriteLine($"[RAW] TryTranslateDualShock4: buttons={buttons} raw=({lx},{ly},{rx},{ry},{l2},{r2})");
+        Debug.WriteLine(
+        "[RAW] DS4 bytes " +
+        string.Join(" ", report.Take(32).Select((b, i) => $"{i}:{b:X2}")));
+
+        //Debug.WriteLine($"[RAW] TryTranslateDualShock4: buttons={buttons} raw=({lx},{ly},{rx},{ry},{l2},{r2})");
         return true;
     }
 
@@ -306,26 +317,26 @@ internal sealed class RawInputPadReader
 
         if (hidPayload is null)
         {
-            Debug.WriteLine("[RAW] TryExtractReportBytes: payload is null");
+            //Debug.WriteLine("[RAW] TryExtractReportBytes: payload is null");
             return false;
         }
 
         if (hidPayload is byte[] bytes)
         {
-            Debug.WriteLine($"[RAW] TryExtractReportBytes: payload is byte[] len={bytes.Length}");
+           // Debug.WriteLine($"[RAW] TryExtractReportBytes: payload is byte[] len={bytes.Length}");
             report = bytes;
             return report.Length > 0;
         }
 
         var type = hidPayload.GetType();
-        Debug.WriteLine($"[RAW] TryExtractReportBytes: payloadType={type.FullName}");
+        //Debug.WriteLine($"[RAW] TryExtractReportBytes: payloadType={type.FullName}");
 
         foreach (string propertyName in new[] { "RawData", "Data", "Bytes" })
         {
             PropertyInfo? property = type.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
             if (property?.GetValue(hidPayload) is byte[] propertyBytes && propertyBytes.Length > 0)
             {
-                Debug.WriteLine($"[RAW] TryExtractReportBytes: matched property {propertyName} len={propertyBytes.Length}");
+                //Debug.WriteLine($"[RAW] TryExtractReportBytes: matched property {propertyName} len={propertyBytes.Length}");
                 report = propertyBytes;
                 return true;
             }
@@ -336,13 +347,13 @@ internal sealed class RawInputPadReader
             FieldInfo? field = type.GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
             if (field?.GetValue(hidPayload) is byte[] fieldBytes && fieldBytes.Length > 0)
             {
-                Debug.WriteLine($"[RAW] TryExtractReportBytes: matched field {fieldName} len={fieldBytes.Length}");
+                //Debug.WriteLine($"[RAW] TryExtractReportBytes: matched field {fieldName} len={fieldBytes.Length}");
                 report = fieldBytes;
                 return true;
             }
         }
 
-        Debug.WriteLine("[RAW] TryExtractReportBytes: no supported byte source found");
+        //Debug.WriteLine("[RAW] TryExtractReportBytes: no supported byte source found");
         return false;
     }
 
