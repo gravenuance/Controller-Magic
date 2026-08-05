@@ -69,25 +69,5 @@ namespace ControllerMagic.Properties {
                 return ((System.Drawing.Icon)(obj));
             }
         }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Icon similar to (Icon).
-        /// </summary>
-        internal static System.Drawing.Icon x16 {
-            get {
-                object obj = ResourceManager.GetObject("x16", resourceCulture);
-                return ((System.Drawing.Icon)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Icon similar to (Icon).
-        /// </summary>
-        internal static System.Drawing.Icon x32 {
-            get {
-                object obj = ResourceManager.GetObject("x32", resourceCulture);
-                return ((System.Drawing.Icon)(obj));
-            }
-        }
     }
 }

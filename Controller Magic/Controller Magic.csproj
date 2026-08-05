@@ -10,6 +10,17 @@
     <ApplicationIcon>controller.ico</ApplicationIcon>
     <StartupObject>ControllerMagic.Program</StartupObject>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+
+    <Product>Controller Magic</Product>
+    <AssemblyTitle>Turn a controller into a mouse, keyboard, and media remote</AssemblyTitle>
+    <Description>Turn a controller into a mouse, keyboard, and media remote.</Description>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <Copyright>Copyright © $([System.DateTime]::Now.Year)</Copyright>
+    <NeutralLanguage>en</NeutralLanguage>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

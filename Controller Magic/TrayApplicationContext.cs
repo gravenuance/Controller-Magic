@@ -10,6 +10,8 @@ namespace ControllerMagic
 
         public TrayApplicationContext()
         {
+            StartupHelper.EnsureMigrated();
+
             _trayIcon = new NotifyIcon
             {
                 Icon = Properties.Resources.Controller,

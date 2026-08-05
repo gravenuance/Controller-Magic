@@ -15,6 +15,8 @@ namespace ControllerMagic
         private TrackBar keyboardDeadZoneTrackBar;
         private Label sensitivityLabel;
         private TrackBar sensitivityTrackBar;
+        private Label watchedAppsLabel;
+        private TextBox watchedAppsTextBox;
         private Button closeButton;
 
         protected override void Dispose(bool disposing)
@@ -39,6 +41,8 @@ namespace ControllerMagic
             this.keyboardDeadZoneTrackBar = new System.Windows.Forms.TrackBar();
             this.sensitivityLabel = new System.Windows.Forms.Label();
             this.sensitivityTrackBar = new System.Windows.Forms.TrackBar();
+            this.watchedAppsLabel = new System.Windows.Forms.Label();
+            this.watchedAppsTextBox = new System.Windows.Forms.TextBox();
             this.closeButton = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)(this.deadZoneTrackBar)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.scrollDeadZoneTrackBar)).BeginInit();
@@ -159,14 +163,35 @@ namespace ControllerMagic
             this.sensitivityTrackBar.Size = new System.Drawing.Size(430, 45);
             this.sensitivityTrackBar.TabIndex = 8;
             this.sensitivityTrackBar.Scroll += new System.EventHandler(this.SensitivityTrackBar_Scroll);
-            // 
+            //
+            // watchedAppsLabel
+            //
+            this.watchedAppsLabel.AutoSize = true;
+            this.watchedAppsLabel.ForeColor = System.Drawing.Color.Lime;
+            this.watchedAppsLabel.Location = new System.Drawing.Point(20, 335);
+            this.watchedAppsLabel.Name = "watchedAppsLabel";
+            this.watchedAppsLabel.Size = new System.Drawing.Size(280, 15);
+            this.watchedAppsLabel.TabIndex = 9;
+            this.watchedAppsLabel.Text = "Streaming apps (comma-separated process names)";
+            //
+            // watchedAppsTextBox
+            //
+            this.watchedAppsTextBox.BackColor = System.Drawing.Color.FromArgb(30, 30, 30);
+            this.watchedAppsTextBox.ForeColor = System.Drawing.Color.Lime;
+            this.watchedAppsTextBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.watchedAppsTextBox.Location = new System.Drawing.Point(20, 355);
+            this.watchedAppsTextBox.Name = "watchedAppsTextBox";
+            this.watchedAppsTextBox.Size = new System.Drawing.Size(430, 23);
+            this.watchedAppsTextBox.TabIndex = 10;
+            this.watchedAppsTextBox.Leave += new System.EventHandler(this.WatchedAppsTextBox_Leave);
+            //
             // SettingsForm
             // 
             // SettingsForm
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.Black;
             this.Opacity = 0.8D;
-            this.ClientSize = new System.Drawing.Size(480, 350);
+            this.ClientSize = new System.Drawing.Size(480, 400);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None; // no Windows bar[web:352]
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Name = "SettingsForm";
@@ -184,6 +209,8 @@ namespace ControllerMagic
             this.Controls.Add(this.keyboardDeadZoneTrackBar);
             this.Controls.Add(this.sensitivityLabel);
             this.Controls.Add(this.sensitivityTrackBar);
+            this.Controls.Add(this.watchedAppsLabel);
+            this.Controls.Add(this.watchedAppsTextBox);
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.Name = "SettingsForm";

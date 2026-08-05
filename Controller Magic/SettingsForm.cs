@@ -27,6 +27,8 @@
 
             UpdateDeadZoneLabels();
             UpdateSensitivityLabel();
+
+            watchedAppsTextBox.Text = string.Join(", ", AppSettings.Instance.WatchedProcessNames);
         }
 
         private static int Clamp(TrackBar bar, int value)
@@ -140,6 +142,18 @@
         private void CloseButton_Click(object sender, EventArgs e)
         {
             Close();
+        }
+
+        private void WatchedAppsTextBox_Leave(object sender, EventArgs e)
+        {
+            var names = watchedAppsTextBox.Text
+                .Split(',')
+                .Select(n => n.Trim())
+                .Where(n => n.Length > 0)
+                .ToList();
+
+            AppSettings.Instance.WatchedProcessNames = names;
+            AppSettings.Instance.Save();
         }
     }
 }

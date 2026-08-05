@@ -11,17 +11,11 @@ namespace ControllerMagic
             public char Display;
             public bool HasMod;
 
-            public KeyEntry(ushort vk, char display, bool hasMod)
+            public KeyEntry(ushort vk, char display, bool hasMod = false)
             {
                 Vk = vk;
                 Display = display;
                 HasMod = hasMod;
-            }
-            public KeyEntry(ushort vk, char display)
-            {
-                Vk = vk;
-                Display = display;
-                HasMod = false;
             }
         }
 
@@ -83,7 +77,7 @@ namespace ControllerMagic
             {
                 {
                     new KeyEntry(VK_E, 'e'),
-                    new KeyEntry(VK_R, 'r'),
+                    new KeyEntry(VK_H, 'h'),
                     new KeyEntry(VK_G, 'g'),
                     new KeyEntry(VK_Q,    'q'),
                 },
@@ -98,7 +92,7 @@ namespace ControllerMagic
                 {
                     new KeyEntry(VK_A, 'a'),
                     new KeyEntry(VK_L, 'l'),
-                    new KeyEntry(VK_P, 'p'),
+                    new KeyEntry(VK_W, 'w'),
                     new KeyEntry(0,    '\0'),
                 },
                 {
@@ -121,12 +115,12 @@ namespace ControllerMagic
                 },
                 {
                     new KeyEntry(VK_S, 's'),
-                    new KeyEntry(VK_W, 'w'),
+                    new KeyEntry(VK_P, 'p'),
                     new KeyEntry(VK_J, 'j'),
                     new KeyEntry(0,    '\0'),
                 },
                 {
-                    new KeyEntry(VK_H, 'h'),
+                    new KeyEntry(VK_R, 'r'),
                     new KeyEntry(VK_F, 'f'),
                     new KeyEntry(VK_X, 'x'),
                     new KeyEntry(0, '\0'),
@@ -326,9 +320,6 @@ namespace ControllerMagic
             private static readonly IntPtr DesktopHandle = GetDesktopWindow();
             private static readonly IntPtr ShellHandle = GetShellWindow();
 
-            private static readonly string[] WatchedProcessNames =
-                { "firefox", "vlc", "chrome", "explorer", "recorder", "steam" };
-
             public static bool IsBlockedFullscreen()
             {
                 IntPtr hWnd = GetForegroundWindow();
@@ -358,7 +349,7 @@ namespace ControllerMagic
                     using var proc = Process.GetProcessById(pid);
                     string name = proc.ProcessName.ToLowerInvariant();
 
-                    if (WatchedProcessNames.Any(name.Contains))
+                    if (AppSettings.Instance.WatchedProcessNames.Any(w => name.Contains(w.Trim().ToLowerInvariant())))
                     {
                         _watching = true;
                         _edge = false;
@@ -395,25 +386,14 @@ namespace ControllerMagic
                     continue;
                 }
 
-                PadState? pad = null;
-
-                if (XInputPadReader.TryRead(0, out var xpad))
-                {
-                    pad = xpad;
-                }
-                else if (sdlPadReader.TryGetLatest(out var sdlPad))
-                {
-                    pad = sdlPad;
-                }
-
-                if (pad is PadState state && state.IsConnected)
+                if (XInputPadReader.TryRead(0, out var pad) || sdlPadReader.TryGetLatest(out pad))
                 {
                     if (_keyboardMode)
-                        ProcessKeyboardMode(state);
+                        ProcessKeyboardMode(pad);
                     else
-                        ProcessSticks(state);
+                        ProcessSticks(pad);
 
-                    ProcessButtons(state);
+                    ProcessButtons(pad);
                 }
 
                 Thread.Sleep(8);
@@ -535,9 +515,8 @@ namespace ControllerMagic
             const ushort VK_RIGHT = 0x27;
             const ushort VK_DOWN = 0x28;
             const ushort VK_MEDIA_PLAY_PAUSE = 0xB3;
-            const ushort VK_MEDIA_PREV_TRACK = 0xB1;
-            const ushort VK_MEDIA_NEXT_TRACK = 0xB0;
             const ushort VK_CTRL = 0x11;
+            const ushort VK_SHIFT = 0x10;
 
             // Driven directly off current state (not edges) so the button can never get stuck
             // down if keyboard mode is toggled while A is still held.
@@ -550,19 +529,14 @@ namespace ControllerMagic
                 else if (B_pressed)
                     InputEmulator.SendKey(VK_ESCAPE);
 
-                if (X_pressed && !_edge)
-                    InputEmulator.RightClick();
-                else if (X_pressed)
+                if (X_pressed && (_watching || _edge))
                     InputEmulator.SendKey(VK_S);
+                else if (X_pressed)
+                    InputEmulator.RightClick();
 
                 if (Y_pressed)
                     InputEmulator.SendKey(VK_MEDIA_PLAY_PAUSE);
 
-                if (LB_pressed)
-                    InputEmulator.SendKey(VK_MEDIA_PREV_TRACK);
-
-                if (RB_pressed)
-                    InputEmulator.SendKey(VK_MEDIA_NEXT_TRACK);
                 if (_watching || _edge)
                 {
                     if (Up_pressed)
@@ -573,6 +547,20 @@ namespace ControllerMagic
                         InputEmulator.SendKey(VK_LEFT);
                     if (Right_pressed)
                         InputEmulator.SendKey(VK_RIGHT);
+
+                    // Netflix's documented shortcut for previous/next episode.
+                    if (LB_pressed)
+                    {
+                        InputEmulator.SendKey(VK_SHIFT, true);
+                        InputEmulator.SendKey(VK_LEFT);
+                        InputEmulator.SendKey(VK_SHIFT, false);
+                    }
+                    if (RB_pressed)
+                    {
+                        InputEmulator.SendKey(VK_SHIFT, true);
+                        InputEmulator.SendKey(VK_RIGHT);
+                        InputEmulator.SendKey(VK_SHIFT, false);
+                    }
                 }
                 if (RS_pressed && !A_down)
                 {
@@ -680,15 +668,12 @@ namespace ControllerMagic
 
             if (A_pressed)
             {
-                EmitDaisywheelKey(_keyboardLayer, sector, _slotIndex, true);
+                EmitDaisywheelKey(_keyboardLayer, sector, _slotIndex);
             }
         }
 
-        private static void EmitDaisywheelKey(int layer, int sector, int index, bool pressed)
+        private static void EmitDaisywheelKey(int layer, int sector, int index)
         {
-            if (!pressed)
-                return;
-
             var entry = Daisywheel[layer, sector, index];
             if (entry.Vk == 0)
                 return;

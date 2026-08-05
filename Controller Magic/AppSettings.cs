@@ -19,6 +19,13 @@ namespace ControllerMagic
 
         public float StickAccelPower { get; set; } = 0.05f;
 
+        // Process names (substring match) whose fullscreen windows still receive
+        // controller input instead of being treated as a game and blocked.
+        public List<string> WatchedProcessNames { get; set; } = new()
+        {
+            "firefox", "vlc", "chrome", "explorer", "recorder", "steam"
+        };
+
         private static string SettingsPath =>
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
 
