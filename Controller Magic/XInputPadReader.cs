@@ -1,7 +1,11 @@
-﻿using Vortice.XInput;
+using Vortice.XInput;
 
 namespace ControllerMagic;
 
+// XInput reads Xbox-layout controllers regardless of window focus and regardless of wired vs.
+// Bluetooth connection, since it rides the same Xbox peripheral driver stack the controller uses
+// either way. Unlike Windows.Gaming.Input, it isn't gated by which app currently has focus, which
+// matters for a background tray utility like this one.
 internal static class XInputPadReader
 {
     public static bool TryRead(int userIndex, out PadState pad)

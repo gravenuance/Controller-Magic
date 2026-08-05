@@ -5,11 +5,6 @@ namespace ControllerMagic
 {
     internal class ControllerPoller
     {
-        private readonly RawInputPadReader _rawInputReader;
-        public ControllerPoller(RawInputPadReader rawInputReader)
-        {
-            _rawInputReader = rawInputReader;
-        }
         public struct KeyEntry
         {
             public ushort Vk;
@@ -240,10 +235,10 @@ namespace ControllerMagic
         };
 
         private Thread? _thread;
-        private bool _running;
+        private volatile bool _running;
 
-        private const int MinIntervalMs = 200;
-        private const int MaxIntervalMs = 20;
+        private const int SlowScrollIntervalMs = 200;
+        private const int FastScrollIntervalMs = 20;
 
         private long _lastScrollTick;
         private long _lastHorizontalScrollTick;
@@ -272,11 +267,21 @@ namespace ControllerMagic
         private static bool _watching;
         private static bool _edge;
 
+        // Without this, Thread.Sleep(8) below is at the mercy of Windows' default ~15.6ms timer
+        // resolution and can actually sleep for ~16ms, making the poll loop (and mouse movement)
+        // land at an uneven cadence instead of a steady ~125Hz beat.
+        [DllImport("winmm.dll", SetLastError = true)]
+        private static extern uint timeBeginPeriod(uint uPeriod);
+
+        [DllImport("winmm.dll", SetLastError = true)]
+        private static extern uint timeEndPeriod(uint uPeriod);
+
         public void Start()
         {
             if (_running) return;
 
             _running = true;
+            timeBeginPeriod(1);
             _thread = new Thread(Loop)
             {
                 IsBackground = true,
@@ -288,6 +293,8 @@ namespace ControllerMagic
         public void Stop()
         {
             _running = false;
+            _thread?.Join();
+            timeEndPeriod(1);
         }
 
         internal static class FullscreenHelper
@@ -319,6 +326,9 @@ namespace ControllerMagic
             private static readonly IntPtr DesktopHandle = GetDesktopWindow();
             private static readonly IntPtr ShellHandle = GetShellWindow();
 
+            private static readonly string[] WatchedProcessNames =
+                { "firefox", "vlc", "chrome", "explorer", "recorder", "steam" };
+
             public static bool IsBlockedFullscreen()
             {
                 IntPtr hWnd = GetForegroundWindow();
@@ -348,7 +358,7 @@ namespace ControllerMagic
                     using var proc = Process.GetProcessById(pid);
                     string name = proc.ProcessName.ToLowerInvariant();
 
-                    if (name.Contains("firefox") || name.Contains("vlc") || name.Contains("chrome") || name.Contains("explorer") || name.Contains("recorder") || name.Contains("steam"))
+                    if (WatchedProcessNames.Any(name.Contains))
                     {
                         _watching = true;
                         _edge = false;
@@ -373,6 +383,10 @@ namespace ControllerMagic
 
         private void Loop()
         {
+            // Constructed and used only on this thread: SDL's event queue is meant to be pumped
+            // consistently from a single thread for its whole lifetime.
+            using var sdlPadReader = new Sdl2PadReader();
+
             while (_running)
             {
                 if (FullscreenHelper.IsBlockedFullscreen())
@@ -387,9 +401,9 @@ namespace ControllerMagic
                 {
                     pad = xpad;
                 }
-                else if (_rawInputReader.TryGetLatest(out var rawPad))
+                else if (sdlPadReader.TryGetLatest(out var sdlPad))
                 {
-                    pad = rawPad;
+                    pad = sdlPad;
                 }
 
                 if (pad is PadState state && state.IsConnected)
@@ -406,6 +420,12 @@ namespace ControllerMagic
             }
         }
 
+        // Sub-pixel remainder carried between ticks so slow movement (< 1px/tick) accumulates into
+        // whole pixels smoothly instead of being truncated away every frame (which reads as
+        // stair-stepped, laggy motion at low stick deflection).
+        private double _dxRemainder;
+        private double _dyRemainder;
+
         private void ProcessSticks(PadState pad)
         {
             var lx = pad.LeftThumbX;
@@ -413,6 +433,8 @@ namespace ControllerMagic
             var mag = Math.Sqrt(lx * lx + ly * ly);
             if (mag < StickDeadZone)
             {
+                _dxRemainder = 0;
+                _dyRemainder = 0;
                 HandleScroll(pad.RightThumbY, pad.RightThumbX);
                 return;
             }
@@ -427,8 +449,15 @@ namespace ControllerMagic
 
             var factor = curvedMag * StickSensitivity * 1000.0;
 
-            var dx = (int)(normX * factor);
-            var dy = (int)(-normY * factor);
+            double exactDx = normX * factor + _dxRemainder;
+            double exactDy = -normY * factor + _dyRemainder;
+
+            var dx = (int)exactDx;
+            var dy = (int)exactDy;
+
+            _dxRemainder = exactDx - dx;
+            _dyRemainder = exactDy - dy;
+
             if (dx != 0 || dy != 0)
                 InputEmulator.MoveMouse(dx, dy);
 
@@ -436,100 +465,67 @@ namespace ControllerMagic
         }
 
 
+        private const int WheelNotch = 120; // one wheel "notch" in Windows
+
         private void HandleScroll(short ry, short rx)
         {
             long now = Environment.TickCount64;
-
-            int v = ry;
-            int absV = v == short.MinValue ? short.MaxValue : Math.Abs(v);
-            if (absV >= ScrollDeadZone)
-            {
-                double normV = (absV - ScrollDeadZone) / (32767.0 - ScrollDeadZone);
-                if (normV < 0) normV = 0;
-                if (normV > 1) normV = 1;
-
-                int intervalV = (int)(MinIntervalMs - normV * (MinIntervalMs - MaxIntervalMs));
-
-                if (now - _lastScrollTick >= intervalV)
-                {
-                    _lastScrollTick = now;
-
-                    // 120 is one wheel "notch" in Windows
-                    int baseStep = 120;
-
-                    int delta = (int)(baseStep * normV);
-                    if (delta == 0) delta = baseStep;
-
-                    int signedDelta = v > 0 ? delta : -delta;
-
-                    InputEmulator.MouseWheelVertical(signedDelta);
-                }
-            }
-
-            int h = rx;
-            int absH = h == short.MinValue ? short.MaxValue : Math.Abs(h);
-            if (absH >= ScrollDeadZone)
-            {
-                double normH = (absH - ScrollDeadZone) / (32767.0 - ScrollDeadZone);
-                if (normH < 0) normH = 0;
-                if (normH > 1) normH = 1;
-
-                int intervalH = (int)(MinIntervalMs - normH * (MinIntervalMs - MaxIntervalMs));
-
-                if (now - _lastHorizontalScrollTick >= intervalH)
-                {
-                    _lastHorizontalScrollTick = now;
-
-                    int baseStep = 120;
-                    int delta = (int)(baseStep * normH);
-                    if (delta == 0) delta = baseStep;
-
-                    int signedDelta = h < 0 ? -delta : delta;
-
-                    InputEmulator.MouseWheelHorizontal(signedDelta);
-                }
-            }
+            TryScroll(ry, now, ref _lastScrollTick, InputEmulator.MouseWheelVertical);
+            TryScroll(rx, now, ref _lastHorizontalScrollTick, InputEmulator.MouseWheelHorizontal);
         }
+
+        private static void TryScroll(int axisValue, long now, ref long lastTick, Action<int> sendWheel)
+        {
+            int abs = axisValue == short.MinValue ? short.MaxValue : Math.Abs(axisValue);
+            if (abs < ScrollDeadZone)
+                return;
+
+            double norm = (abs - ScrollDeadZone) / (32767.0 - ScrollDeadZone);
+            if (norm < 0) norm = 0;
+            if (norm > 1) norm = 1;
+
+            int interval = (int)(SlowScrollIntervalMs - norm * (SlowScrollIntervalMs - FastScrollIntervalMs));
+            if (now - lastTick < interval)
+                return;
+
+            lastTick = now;
+
+            int delta = (int)(WheelNotch * norm);
+            if (delta == 0) delta = WheelNotch;
+
+            sendWheel(axisValue > 0 ? delta : -delta);
+        }
+
         public event Action<bool>? KeyboardModeChanged;
+
+        private bool WasPressed(PadButtons current, PadButtons flag) =>
+            current.HasFlag(flag) && !_prevButtons.HasFlag(flag);
+
         private void ProcessButtons(PadState pad)
         {
             var buttons = pad.Buttons;
 
             bool A_down = buttons.HasFlag(PadButtons.A);
-            bool B_down = buttons.HasFlag(PadButtons.B);
-            bool X_down = buttons.HasFlag(PadButtons.X);
-            bool Y_down = buttons.HasFlag(PadButtons.Y);
-            bool LB_down = buttons.HasFlag(PadButtons.LeftShoulder);
-            bool RB_down = buttons.HasFlag(PadButtons.RightShoulder);
-            bool Back_down = buttons.HasFlag(PadButtons.Back);
-            bool Start_down = buttons.HasFlag(PadButtons.Start);
-            bool Up_down = buttons.HasFlag(PadButtons.DPadUp);
-            bool Down_down = buttons.HasFlag(PadButtons.DPadDown);
-            bool Left_down = buttons.HasFlag(PadButtons.DPadLeft);
-            bool Right_down = buttons.HasFlag(PadButtons.DPadRight);
-            bool LS_down = buttons.HasFlag(PadButtons.LeftThumb);
-            bool RS_down = buttons.HasFlag(PadButtons.RightThumb);
 
-            bool B_pressed = B_down && !_prevButtons.HasFlag(PadButtons.B);
-            bool X_pressed = X_down && !_prevButtons.HasFlag(PadButtons.X);
-            bool Y_pressed = Y_down && !_prevButtons.HasFlag(PadButtons.Y);
-            bool LB_pressed = LB_down && !_prevButtons.HasFlag(PadButtons.LeftShoulder);
-            bool RB_pressed = RB_down && !_prevButtons.HasFlag(PadButtons.RightShoulder);
-            bool Back_pressed = Back_down && !_prevButtons.HasFlag(PadButtons.Back);
-            bool Start_pressed = Start_down && !_prevButtons.HasFlag(PadButtons.Start);
-            bool Up_pressed = Up_down && !_prevButtons.HasFlag(PadButtons.DPadUp);
-            bool Down_pressed = Down_down && !_prevButtons.HasFlag(PadButtons.DPadDown);
-            bool Left_pressed = Left_down && !_prevButtons.HasFlag(PadButtons.DPadLeft);
-            bool Right_pressed = Right_down && !_prevButtons.HasFlag(PadButtons.DPadRight);
-            bool LS_pressed = LS_down && !_prevButtons.HasFlag(PadButtons.LeftThumb);
-            bool RS_pressed = RS_down && !_prevButtons.HasFlag(PadButtons.RightThumb);
+            bool B_pressed = WasPressed(buttons, PadButtons.B);
+            bool X_pressed = WasPressed(buttons, PadButtons.X);
+            bool Y_pressed = WasPressed(buttons, PadButtons.Y);
+            bool LB_pressed = WasPressed(buttons, PadButtons.LeftShoulder);
+            bool RB_pressed = WasPressed(buttons, PadButtons.RightShoulder);
+            bool Back_pressed = WasPressed(buttons, PadButtons.Back);
+            bool Start_pressed = WasPressed(buttons, PadButtons.Start);
+            bool Up_pressed = WasPressed(buttons, PadButtons.DPadUp);
+            bool Down_pressed = WasPressed(buttons, PadButtons.DPadDown);
+            bool Left_pressed = WasPressed(buttons, PadButtons.DPadLeft);
+            bool Right_pressed = WasPressed(buttons, PadButtons.DPadRight);
+            bool LS_pressed = WasPressed(buttons, PadButtons.LeftThumb);
+            bool RS_pressed = WasPressed(buttons, PadButtons.RightThumb);
 
             if (LS_pressed)
             {
                 _keyboardMode = !_keyboardMode;
                 KeyboardModeChanged?.Invoke(_keyboardMode);
             }
-                
 
             const ushort VK_BACK = 0x08; // Backspace
             const ushort VK_ESCAPE = 0x1B;
@@ -543,14 +539,12 @@ namespace ControllerMagic
             const ushort VK_MEDIA_NEXT_TRACK = 0xB0;
             const ushort VK_CTRL = 0x11;
 
+            // Driven directly off current state (not edges) so the button can never get stuck
+            // down if keyboard mode is toggled while A is still held.
+            InputEmulator.SetLeftButtonState(!_keyboardMode && A_down);
+
             if (!_keyboardMode)
             {
-                if (A_down)
-                    InputEmulator.SetLeftButtonState(true);
-
-                if (!A_down && _prevButtons.HasFlag(PadButtons.A))
-                    InputEmulator.SetLeftButtonState(false);
-
                 if (B_pressed && !_edge)
                     InputEmulator.SendKey(VK_BACK);
                 else if (B_pressed)
@@ -580,7 +574,7 @@ namespace ControllerMagic
                     if (Right_pressed)
                         InputEmulator.SendKey(VK_RIGHT);
                 }
-                if (RS_pressed)
+                if (RS_pressed && !A_down)
                 {
                     InputEmulator.SendKey(VK_CTRL, true);
                     InputEmulator.LeftClick();
@@ -595,9 +589,8 @@ namespace ControllerMagic
                 InputEmulator.SendKey(VK_ESCAPE);
 
             _prevButtons = buttons;
-
-
         }
+
         private void ProcessKeyboardMode(PadState pad)
         {
             var buttons = pad.Buttons;
@@ -605,10 +598,8 @@ namespace ControllerMagic
             const byte TriggerPressThreshold = 160;
             const byte TriggerReleaseThreshold = 120;
 
-            bool LB_down = buttons.HasFlag(PadButtons.LeftShoulder);
-            bool RB_down = buttons.HasFlag(PadButtons.RightShoulder);
-            bool LB_pressed = LB_down && !_prevButtons.HasFlag(PadButtons.LeftShoulder);
-            bool RB_pressed = RB_down && !_prevButtons.HasFlag(PadButtons.RightShoulder);
+            bool LB_pressed = WasPressed(buttons, PadButtons.LeftShoulder);
+            bool RB_pressed = WasPressed(buttons, PadButtons.RightShoulder);
 
             byte LT_raw = pad.LeftTrigger;
             byte RT_raw = pad.RightTrigger;
@@ -629,36 +620,28 @@ namespace ControllerMagic
             _ltWasDown = LT_down;
             _rtWasDown = RT_down;
 
-            bool A_down = buttons.HasFlag(PadButtons.A);
-            bool B_down = buttons.HasFlag(PadButtons.B);
-            bool X_down = buttons.HasFlag(PadButtons.X);
-            bool Y_down = buttons.HasFlag(PadButtons.Y);
+            bool A_pressed = WasPressed(buttons, PadButtons.A);
+            bool B_pressed = WasPressed(buttons, PadButtons.B);
+            bool X_pressed = WasPressed(buttons, PadButtons.X);
+            bool Y_pressed = WasPressed(buttons, PadButtons.Y);
 
-            bool A_pressed = A_down && !_prevButtons.HasFlag(PadButtons.A);
-            bool B_pressed = B_down && !_prevButtons.HasFlag(PadButtons.B);
-            bool X_pressed = X_down && !_prevButtons.HasFlag(PadButtons.X);
-            bool Y_pressed = Y_down && !_prevButtons.HasFlag(PadButtons.Y);
-
-            bool Left_down = buttons.HasFlag(PadButtons.DPadLeft);
-            bool Right_down = buttons.HasFlag(PadButtons.DPadRight);
-
-            bool Left_pressed = Left_down && !_prevButtons.HasFlag(PadButtons.DPadLeft);
-            bool Right_pressed = Right_down && !_prevButtons.HasFlag(PadButtons.DPadRight);
+            bool Left_pressed = WasPressed(buttons, PadButtons.DPadLeft);
+            bool Right_pressed = WasPressed(buttons, PadButtons.DPadRight);
 
             const ushort VK_BACK = 0x08;
             const ushort VK_SPACE = 0x20;
             const ushort VK_PERIOD = 0xBE;
 
-            if (Left_pressed || LT_pressed) {
+            if (Left_pressed || LT_pressed)
+            {
                 _keyboardLayer = (_keyboardLayer + 2) % 3;   // backwards (0<-1<-2)
                 _slotIndex = 0;
             }
-            if (Right_pressed || RT_pressed) { 
+            if (Right_pressed || RT_pressed)
+            {
                 _keyboardLayer = (_keyboardLayer + 1) % 3;   // forwards (0->1->2)
                 _slotIndex = 0;
             }
-
-
 
             if (X_pressed)
             {
@@ -699,8 +682,8 @@ namespace ControllerMagic
             {
                 EmitDaisywheelKey(_keyboardLayer, sector, _slotIndex, true);
             }
-
         }
+
         private static void EmitDaisywheelKey(int layer, int sector, int index, bool pressed)
         {
             if (!pressed)

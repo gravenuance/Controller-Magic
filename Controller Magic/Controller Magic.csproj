@@ -17,8 +17,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="RawInput.Sharp" Version="0.1.3" />
     <PackageReference Include="Vortice.XInput" Version="3.8.3" />
+    <PackageReference Include="ppy.SDL2-CS" Version="1.0.741-alpha" />
+    <PackageReference Include="sdl2.nuget" Version="2.32.8" />
   </ItemGroup>
 
   <ItemGroup>

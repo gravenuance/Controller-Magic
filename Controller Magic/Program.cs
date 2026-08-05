@@ -8,6 +8,11 @@ namespace ControllerMagic
         {
             if (!_mutex.WaitOne(0, false))
             {
+                MessageBox.Show(
+                    "Controller Magic is already running (check the system tray).",
+                    "Controller Magic",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
                 return;
             }
             Application.EnableVisualStyles();

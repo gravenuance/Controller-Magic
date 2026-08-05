@@ -8,6 +8,19 @@ namespace ControllerMagic
 
         private readonly ControllerPoller _poller;
         private readonly System.Windows.Forms.Timer _timer;
+        private bool _wasKeyboardMode;
+
+        private readonly SolidBrush _textBrush = new(Color.Lime);
+        private readonly SolidBrush _hotBrush = new(Color.FromArgb(200, 0, 255, 0));
+        private readonly SolidBrush _normalBrush = new(Color.FromArgb(178, 10, 10, 10));
+        private readonly Pen _pen = new(Color.Lime, 1.5f);
+        private readonly Font _tileFont = new("Segoe UI", 16f, FontStyle.Bold);
+        private readonly Font _legendFont = new("Segoe UI", 12f, FontStyle.Regular);
+        private readonly StringFormat _centerFormat = new()
+        {
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Center
+        };
 
         public KeyboardOverlayForm(ControllerPoller poller)
         {
@@ -29,8 +42,16 @@ namespace ControllerMagic
 
             Load += (_, __) => MakeClickThrough();
 
+            // Only repaint while keyboard mode is active (for the live sector highlight),
+            // plus one final tick on the transition out to clear the last frame.
             _timer = new System.Windows.Forms.Timer { Interval = 16 }; // ~60 FPS
-            _timer.Tick += (_, __) => Invalidate();
+            _timer.Tick += (_, __) =>
+            {
+                bool isKeyboardMode = _poller.KeyboardMode;
+                if (isKeyboardMode || _wasKeyboardMode)
+                    Invalidate();
+                _wasKeyboardMode = isKeyboardMode;
+            };
             _timer.Start();
         }
 
@@ -55,23 +76,17 @@ namespace ControllerMagic
             var layout = ControllerPoller.KeyboardLayout;
             int layer = _poller.KeyboardLayer;
             int hot = _poller.CurrentSector;
+            int slot = _poller.SlotIndex;
 
             float cx = ClientSize.Width / 2f;
             float cy = ClientSize.Height / 2f;
             float baseRadius = 120f; // a bit farther out
-
-            using var textBrush = new SolidBrush(Color.Lime);                       // letters
-            using var hotBrush = new SolidBrush(Color.FromArgb(200, 0, 255, 0));
-            using var normalBrush = new SolidBrush(Color.FromArgb(178, 10, 10, 10));
-            using var pen = new Pen(Color.Lime, 1.5f);                        // outline
-            using var font = new Font("Segoe UI", 16f, FontStyle.Bold);        // slightly larger text
 
             float tileSize = 40f;
 
             for (int sector = 0; sector < 8; sector++)
             {
                 bool isHot = (sector == hot);
-                int slot = _poller.SlotIndex;
 
                 double angleDeg = 90.0 + sector * 45.0;
 
@@ -98,16 +113,10 @@ namespace ControllerMagic
                         tileSize
                     );
 
-                    g.FillEllipse(isHot && isSelectedSlot ? hotBrush : normalBrush, rect);
-                    g.DrawEllipse(pen, rect);
+                    g.FillEllipse(isHot && isSelectedSlot ? _hotBrush : _normalBrush, rect);
+                    g.DrawEllipse(_pen, rect);
 
-                    var sf = new StringFormat
-                    {
-                        Alignment = StringAlignment.Center,
-                        LineAlignment = StringAlignment.Center
-                    };
-
-                    g.DrawString(entry.Display.ToString(), font, textBrush, rect, sf);
+                    g.DrawString(entry.Display.ToString(), _tileFont, _textBrush, rect, _centerFormat);
                 }
             }
 
@@ -117,14 +126,12 @@ namespace ControllerMagic
         private void DrawLegend(Graphics g)
         {
             const string legend = "X = ⌫   Y = ␣   B = .";
-            using var brush = new SolidBrush(Color.Lime);
-            using var font = new Font("Segoe UI", 12f, FontStyle.Regular);
 
-            var size = g.MeasureString(legend, font);
+            var size = g.MeasureString(legend, _legendFont);
             float x = ClientSize.Width - size.Width - 20;
             float y = ClientSize.Height - size.Height - 20;
 
-            g.DrawString(legend, font, brush, x, y);
+            g.DrawString(legend, _legendFont, _textBrush, x, y);
         }
 
         // Win32 interop for click-through

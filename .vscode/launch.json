@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Controller Magic (Debug)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/Controller Magic/bin/Debug/net8.0-windows/Controller Magic.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/Controller Magic",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        }
+    ]
+}

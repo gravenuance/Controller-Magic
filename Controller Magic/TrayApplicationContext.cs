@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 
 namespace ControllerMagic
 {
@@ -7,14 +7,9 @@ namespace ControllerMagic
         private readonly NotifyIcon _trayIcon;
         private readonly ControllerPoller _controllerPoller;
         private readonly KeyboardOverlayForm _overlay;
-        private readonly SynchronizationContext _uiContext;
-        private readonly RawInputPadReader _rawInputPadReader;
-        private readonly RawInputReceiverWindow _rawInputWindow;
 
         public TrayApplicationContext()
         {
-            _uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
-
             _trayIcon = new NotifyIcon
             {
                 Icon = Properties.Resources.Controller,
@@ -35,10 +30,7 @@ namespace ControllerMagic
 
             _trayIcon.ContextMenuStrip = menu;
 
-            _rawInputPadReader = new RawInputPadReader();
-            _rawInputWindow = new RawInputReceiverWindow(_rawInputPadReader);
-
-            _controllerPoller = new ControllerPoller(_rawInputPadReader);
+            _controllerPoller = new ControllerPoller();
             _controllerPoller.KeyboardModeChanged += OnKeyboardModeChanged;
             _controllerPoller.Start();
 
@@ -114,51 +106,12 @@ namespace ControllerMagic
             _controllerPoller.KeyboardModeChanged -= OnKeyboardModeChanged;
             _controllerPoller.Stop();
 
-            _rawInputWindow.Dispose();
-
             _overlay?.Close();
 
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
 
             base.ExitThreadCore();
-        }
-
-        private sealed class RawInputReceiverWindow : NativeWindow, IDisposable
-        {
-            private const int WM_INPUT = 0x00FF;
-
-            private readonly RawInputPadReader _rawInputPadReader;
-
-            public RawInputReceiverWindow(RawInputPadReader rawInputPadReader)
-            {
-                _rawInputPadReader = rawInputPadReader;
-
-                CreateHandle(new CreateParams
-                {
-                    Caption = "ControllerMagicRawInputSink"
-                });
-
-                _rawInputPadReader.Register(Handle);
-            }
-
-            protected override void WndProc(ref Message m)
-            {
-                if (m.Msg == WM_INPUT)
-                {
-                    _rawInputPadReader.ProcessWindowMessage(m.LParam);
-                }
-
-                base.WndProc(ref m);
-            }
-
-            public void Dispose()
-            {
-                if (Handle != IntPtr.Zero)
-                {
-                    DestroyHandle();
-                }
-            }
         }
     }
 }

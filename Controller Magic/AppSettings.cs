@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Diagnostics;
+using System.Text.Json;
 
 namespace ControllerMagic
 {
@@ -33,8 +34,9 @@ namespace ControllerMagic
                         return loaded;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Debug.WriteLine($"[AppSettings] Failed to load {SettingsPath}: {ex}");
             }
 
             return new AppSettings();
@@ -44,16 +46,13 @@ namespace ControllerMagic
         {
             try
             {
-                JsonSerializerOptions jsonSerializerOptions = new()
-                {
-                    WriteIndented = true
-                };
-                var options = jsonSerializerOptions;
+                var options = new JsonSerializerOptions { WriteIndented = true };
                 string json = JsonSerializer.Serialize(this, options);
                 File.WriteAllText(SettingsPath, json);
             }
-            catch
+            catch (Exception ex)
             {
+                Debug.WriteLine($"[AppSettings] Failed to save {SettingsPath}: {ex}");
             }
         }
     }

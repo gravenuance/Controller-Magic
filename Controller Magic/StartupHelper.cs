@@ -17,7 +17,7 @@ namespace ControllerMagic
         public static void SetEnabled(bool enabled)
         {
             string exe = Application.ExecutablePath;
-            using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
+            using var key = Registry.CurrentUser.CreateSubKey(RunKey, writable: true);
             if (key == null) return;
 
             if (enabled)
