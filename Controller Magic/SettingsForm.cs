@@ -144,7 +144,7 @@ namespace ControllerMagic
                 Size = new Size(ContentWidth, 45),
                 TabIndex = _nextTabIndex++
             };
-            _layoutY += 40;
+            _layoutY += 50;
 
             var slider = new SliderSetting { Label = label, TrackBar = trackBar, Get = get, Set = set, FormatLabel = format };
             slider.RefreshFromSettings();
@@ -200,7 +200,7 @@ namespace ControllerMagic
                 AutoSize = true,
                 ForeColor = Color.Lime,
                 Location = new Point(LeftMargin, _layoutY),
-                Text = "Full-screen apps (comma-separated process names)"
+                Text = "Comma-separated process names"
             });
             _layoutY += 20;
 
