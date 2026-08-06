@@ -17,7 +17,11 @@ namespace ControllerMagic
 
         public bool RunAtStartup { get; set; } = false;
 
-        public float StickAccelPower { get; set; } = 0.05f;
+        // Exponent applied to the normalized stick magnitude (0..1) before scaling cursor speed.
+        // >1 gives a gradual ramp - slow/precise near center, faster toward full deflection.
+        // <1 does the opposite (snaps to near-max speed on almost any push), which is why the
+        // old default of 0.05 felt twitchy instead of smooth.
+        public float StickAccelPower { get; set; } = 2.0f;
 
         // Process names (substring match) whose fullscreen windows still receive
         // controller input instead of being treated as a game and blocked.
