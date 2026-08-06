@@ -16,6 +16,23 @@
                 "kind": "build",
                 "isDefault": true
             }
+        },
+        {
+            "label": "publish (production)",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "publish",
+                "${workspaceFolder}/Controller Magic/Controller Magic.csproj",
+                "-p:PublishProfile=win-x64",
+                "/property:GenerateFullPaths=true",
+                "/consoleloggerparameters:NoSummary"
+            ],
+            "problemMatcher": "$msCompile",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            }
         }
     ]
 }
