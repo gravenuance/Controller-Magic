@@ -261,6 +261,9 @@ namespace ControllerMagic
         private static bool _watching;
         private static bool _edge;
 
+        private PadButtons _lastRawButtons;
+        private PadButtons _stableButtons;
+
         // Without this, Thread.Sleep(8) below is at the mercy of Windows' default ~15.6ms timer
         // resolution and can actually sleep for ~16ms, making the poll loop (and mouse movement)
         // land at an uneven cadence instead of a steady ~125Hz beat.
@@ -388,6 +391,8 @@ namespace ControllerMagic
 
                 if (XInputPadReader.TryRead(0, out var pad) || sdlPadReader.TryGetLatest(out pad))
                 {
+                    pad.Buttons = DebounceButtons(pad.Buttons);
+
                     if (_keyboardMode)
                         ProcessKeyboardMode(pad);
                     else
@@ -398,6 +403,19 @@ namespace ControllerMagic
 
                 Thread.Sleep(8);
             }
+        }
+
+        // Some pads (PS4/PS5 over Bluetooth especially, or when routed through a virtual XInput
+        // layer like Steam's controller support) can report a single-tick flicker on the D-pad or
+        // face buttons - a spurious blip that WasPressed() would otherwise read as a real press
+        // and fire on. Requiring two consecutive identical polls before trusting a reading filters
+        // that out while staying well under human reaction time (this loop runs at ~125Hz).
+        private PadButtons DebounceButtons(PadButtons raw)
+        {
+            if (raw == _lastRawButtons)
+                _stableButtons = raw;
+            _lastRawButtons = raw;
+            return _stableButtons;
         }
 
         // Sub-pixel remainder carried between ticks so slow movement (< 1px/tick) accumulates into
