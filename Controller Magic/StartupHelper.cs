@@ -1,64 +1,147 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.Win32;
 
 namespace ControllerMagic
 {
-    // Runs the app via a Task Scheduler logon trigger instead of the classic
-    // HKCU...\Run key. Windows deliberately staggers Run-key apps by several
-    // seconds after logon to keep Explorer responsive; a scheduled task fires
-    // directly off the logon event instead, so it starts noticeably sooner.
+    // Starts the app at logon. Prefers a Task Scheduler logon trigger over the classic
+    // HKCU...\Run key, since Windows deliberately staggers Run-key apps by several seconds after
+    // logon to keep Explorer responsive first, while a scheduled task fires directly off the
+    // logon event. Some locked-down (e.g. Group Policy managed / Enterprise) machines reject
+    // unelevated task creation outright; when the user explicitly flips the Settings toggle we
+    // retry once with a UAC prompt (many such policies only block the unelevated path), and if
+    // that's declined or still fails we fall back to the Run key instead of leaving the toggle
+    // silently non-functional.
     internal static class StartupHelper
     {
         private const string TaskName = "ControllerMagic";
-        private const string LegacyRunKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-        private const string LegacyAppName = "ControllerMagic";
+        private const string RunKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+        private const string AppName = "ControllerMagic";
 
-        public static bool IsEnabled()
-        {
-            MigrateLegacyIfNeeded();
-            return RunSchtasks("/Query", "/TN", TaskName) == 0;
-        }
+        // Tags launches that came from the task/Run-key so Program.cs can tell an automatic
+        // startup attempt apart from the user manually double-clicking the exe, and skip the
+        // "already running" dialog for the former.
+        private const string StartupArg = " --startup";
 
-        // Call once at app startup so users who had the old Run-key entry get
-        // moved onto the faster scheduled task without needing to reopen Settings.
-        public static void EnsureMigrated() => MigrateLegacyIfNeeded();
+        public static bool IsEnabled() =>
+            RunSchtasks("/Query", "/TN", TaskName) == 0 || GetRunKeyValue() != null;
 
         public static void SetEnabled(bool enabled)
         {
             if (enabled)
-                CreateTask();
+                Enable();
             else
-                RunSchtasks("/Delete", "/TN", TaskName, "/F");
+                Disable();
         }
 
-        private static void CreateTask()
+        private static void Enable()
         {
             string exe = Application.ExecutablePath;
-            int exitCode = RunSchtasks(
-                "/Create", "/TN", TaskName,
-                "/TR", $"\"{exe}\"",
-                "/SC", "ONLOGON",
-                "/RL", "LIMITED",
-                "/F");
 
-            if (exitCode != 0)
-                Debug.WriteLine($"[StartupHelper] Failed to create scheduled task (exit {exitCode}).");
+            if (TryCreateTask(exe, allowElevation: true))
+                RemoveRunKeyValue();
+            else
+                SetRunKeyValue(exe);
         }
 
-        // One-time upgrade path for users who had startup enabled via the old Run key.
-        private static void MigrateLegacyIfNeeded()
+        private static void Disable()
+        {
+            if (RunSchtasks("/Query", "/TN", TaskName) == 0)
+            {
+                if (RunSchtasks("/Delete", "/TN", TaskName, "/F") != 0)
+                    RunSchtasksElevated(new[] { "/Delete", "/TN", TaskName, "/F" });
+            }
+
+            RemoveRunKeyValue();
+        }
+
+        // One-time upgrade path for users who had startup enabled via the old Run-key-only
+        // version. Runs silently at app launch, so it never prompts for elevation - it only
+        // removes the Run key once the scheduled task actually took unelevated; on machines that
+        // block that, the existing Run key is left alone so startup keeps working.
+        public static void EnsureMigrated()
+        {
+            string? stored = GetRunKeyValue();
+            if (stored == null) return;
+
+            if (TryCreateTask(ExtractExePath(stored), allowElevation: false))
+                RemoveRunKeyValue();
+        }
+
+        private static string BuildCommand(string exe) => $"\"{exe}\"{StartupArg}";
+
+        // Reverses BuildCommand(). Also handles values written by pre-refactor versions, which
+        // stored a bare, unquoted path with no arguments at all.
+        private static string ExtractExePath(string storedCommand)
+        {
+            string value = storedCommand.EndsWith(StartupArg, StringComparison.OrdinalIgnoreCase)
+                ? storedCommand[..^StartupArg.Length]
+                : storedCommand;
+            return value.Trim('"');
+        }
+
+        private static bool TryCreateTask(string exe, bool allowElevation)
+        {
+            string[] createArgs =
+            {
+                "/Create", "/TN", TaskName,
+                "/TR", BuildCommand(exe),
+                "/SC", "ONLOGON",
+                "/RL", "LIMITED",
+                "/F"
+            };
+
+            if (RunSchtasks(createArgs) == 0)
+                return true;
+
+            if (!allowElevation)
+            {
+                Debug.WriteLine("[StartupHelper] Unelevated scheduled task creation failed; skipping the elevation prompt during background migration.");
+                return false;
+            }
+
+            Debug.WriteLine("[StartupHelper] Unelevated scheduled task creation failed; retrying with a UAC prompt.");
+            return RunSchtasksElevated(createArgs);
+        }
+
+        private static string? GetRunKeyValue()
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(LegacyRunKey, true);
-                if (key?.GetValue(LegacyAppName) is not string) return;
-
-                key.DeleteValue(LegacyAppName, throwOnMissingValue: false);
-                CreateTask();
+                using var key = Registry.CurrentUser.OpenSubKey(RunKey, false);
+                return key?.GetValue(AppName) as string;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[StartupHelper] Legacy Run-key migration failed: {ex}");
+                Debug.WriteLine($"[StartupHelper] Failed to read Run key: {ex}");
+                return null;
+            }
+        }
+
+        private static void SetRunKeyValue(string exe)
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.CreateSubKey(RunKey, writable: true);
+                key?.SetValue(AppName, BuildCommand(exe));
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[StartupHelper] Failed to write Run key: {ex}");
+            }
+        }
+
+        private static void RemoveRunKeyValue()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(RunKey, true);
+                if (key?.GetValue(AppName) != null)
+                    key.DeleteValue(AppName, throwOnMissingValue: false);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[StartupHelper] Failed to remove Run key: {ex}");
             }
         }
 
@@ -85,6 +168,39 @@ namespace ControllerMagic
             {
                 Debug.WriteLine($"[StartupHelper] schtasks invocation failed: {ex}");
                 return -1;
+            }
+        }
+
+        // Retries an operation with a UAC consent prompt. Some locked-down (Group Policy managed)
+        // machines only block *unelevated* task operations; an elevated token can often still
+        // succeed. If the user declines the prompt, this just fails closed.
+        private static bool RunSchtasksElevated(string[] args)
+        {
+            var psi = new ProcessStartInfo("schtasks.exe")
+            {
+                UseShellExecute = true,
+                Verb = "runas",
+                WindowStyle = ProcessWindowStyle.Hidden,
+            };
+            foreach (var arg in args)
+                psi.ArgumentList.Add(arg);
+
+            try
+            {
+                using var proc = Process.Start(psi);
+                if (proc == null) return false;
+                proc.WaitForExit();
+                return proc.ExitCode == 0;
+            }
+            catch (Win32Exception ex) when (ex.NativeErrorCode == 1223) // ERROR_CANCELLED
+            {
+                Debug.WriteLine("[StartupHelper] User declined the elevation prompt.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[StartupHelper] Elevated schtasks invocation failed: {ex}");
+                return false;
             }
         }
     }

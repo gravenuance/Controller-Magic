@@ -4,15 +4,24 @@ namespace ControllerMagic
     {
         private static readonly Mutex _mutex = new(true, "ControllerMagic-69F2B9E1-7C2E-4C11-9C1A-ABCDEF123456", out _);
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
+            // StartupHelper launches both the scheduled task and the Run-key fallback with this
+            // flag. If both ever end up configured at once (or an automatic launch simply loses
+            // the race to one the user started by hand), the loser should exit quietly instead of
+            // popping a dialog nobody's watching for at login.
+            bool isAutoStart = args.Any(a => string.Equals(a, "--startup", StringComparison.OrdinalIgnoreCase));
+
             if (!_mutex.WaitOne(0, false))
             {
-                MessageBox.Show(
-                    "Controller Magic is already running (check the system tray).",
-                    "Controller Magic",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                if (!isAutoStart)
+                {
+                    MessageBox.Show(
+                        "Controller Magic is already running (check the system tray).",
+                        "Controller Magic",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
                 return;
             }
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
