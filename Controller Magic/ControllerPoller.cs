@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace ControllerMagic
 {
@@ -253,13 +254,14 @@ namespace ControllerMagic
         private static float StickSensitivity => AppSettings.Instance.StickSensitivity;
         private static int KeyboardDeadZone => AppSettings.Instance.KeyboardDeadZone;
         private static float StickAccelPower => AppSettings.Instance.StickAccelPower;
+        private static float StickRampSeconds => AppSettings.Instance.StickRampSeconds;
 
         private int _slotIndex;
         public int SlotIndex => _slotIndex;
 
         private PadButtons _prevButtons;
         private static bool _watching;
-        private static bool _edge;
+        private static bool _streaming;
 
         private PadButtons _lastRawButtons;
         private PadButtons _stableButtons;
@@ -311,6 +313,24 @@ namespace ControllerMagic
             [DllImport("user32.dll")]
             private static extern int GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
 
+            [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+            private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+            [DllImport("user32.dll")]
+            private static extern int GetWindowTextLength(IntPtr hWnd);
+
+            // Windows 10+ pads a normal (bordered/maximized) window's GetWindowRect with an
+            // invisible ~8px resize border on each side that isn't visually real - a maximized
+            // video player can be genuinely edge-to-edge on screen while GetWindowRect reports it
+            // as a few pixels short/over. DWMWA_EXTENDED_FRAME_BOUNDS returns the actual visual
+            // bounds instead, which lines up exactly with the monitor for both true borderless
+            // fullscreen (a WS_POPUP window with no frame, where this already equals GetWindowRect)
+            // and a maximized bordered window (where it doesn't).
+            [DllImport("dwmapi.dll")]
+            private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+
+            private const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+
             [StructLayout(LayoutKind.Sequential)]
             private struct RECT
             {
@@ -323,26 +343,52 @@ namespace ControllerMagic
             private static readonly IntPtr DesktopHandle = GetDesktopWindow();
             private static readonly IntPtr ShellHandle = GetShellWindow();
 
+            private static long _lastCheckTick;
+            private static bool _lastResult;
+
+            // None of this (monitor layout, foreground process, window title) changes meaningfully
+            // within a 100ms window, but the poll loop calls this every ~8ms - re-enumerating
+            // monitors and resolving the process/title that often is pure waste for state that's
+            // effectively static between checks. Throttling to 10Hz cuts the expensive path by
+            // ~12x with no perceptible change in responsiveness.
+            private const int RecheckIntervalMs = 100;
+
             public static bool IsBlockedFullscreen()
+            {
+                long now = Environment.TickCount64;
+                if (now - _lastCheckTick < RecheckIntervalMs)
+                    return _lastResult;
+                _lastCheckTick = now;
+                _lastResult = ComputeIsBlockedFullscreen();
+                return _lastResult;
+            }
+
+            private static bool ComputeIsBlockedFullscreen()
             {
                 IntPtr hWnd = GetForegroundWindow();
                 if (hWnd == IntPtr.Zero || hWnd == DesktopHandle || hWnd == ShellHandle)
                     return false;
 
-                if (!GetWindowRect(hWnd, out RECT rect))
+                bool gotExtendedBounds = DwmGetWindowAttribute(
+                    hWnd, DWMWA_EXTENDED_FRAME_BOUNDS, out RECT rect, Marshal.SizeOf<RECT>()) == 0;
+
+                if (!gotExtendedBounds && !GetWindowRect(hWnd, out rect))
                     return false;
 
-                var screen = Screen.FromHandle(hWnd);
-                var bounds = screen.Bounds;
+                // A window only counts as fullscreen if it exactly matches one monitor's bounds on
+                // all four sides. Matching width/height alone (the old check) can also be true for
+                // a window that's merely the right size but positioned elsewhere - e.g. straddling
+                // a monitor boundary - without actually covering any single monitor.
+                bool isFullscreen = Screen.AllScreens.Any(s =>
+                    rect.Left == s.Bounds.Left &&
+                    rect.Top == s.Bounds.Top &&
+                    rect.Right == s.Bounds.Right &&
+                    rect.Bottom == s.Bounds.Bottom);
 
-                int width = rect.Right - rect.Left;
-                int height = rect.Bottom - rect.Top;
-
-                bool isFullscreen = width == bounds.Width && height == bounds.Height;
                 if (!isFullscreen)
                 {
                     _watching = false;
-                    _edge = false;
+                    _streaming = false;
                     return false;
                 }
 
@@ -351,27 +397,41 @@ namespace ControllerMagic
                 {
                     using var proc = Process.GetProcessById(pid);
                     string name = proc.ProcessName.ToLowerInvariant();
+                    string title = GetWindowTitle(hWnd);
 
-                    if (AppSettings.Instance.WatchedProcessNames.Any(w => name.Contains(w.Trim().ToLowerInvariant())))
-                    {
-                        _watching = true;
-                        _edge = false;
+                    _watching = AppSettings.Instance.WatchedProcessNames
+                        .Any(w => !string.IsNullOrWhiteSpace(w) && name.Contains(w.Trim().ToLowerInvariant()));
+
+                    // 'S' (Skip Intro) only makes sense for actual streaming services: something
+                    // with a known streaming service name in its title, or Edge itself, since the
+                    // Windows Store apps for these services (Netflix, Prime Video, Disney+, etc.)
+                    // are usually just an Edge WebView host under the hood and don't always surface
+                    // the service name in their title.
+                    _streaming = name.Contains("edge") ||
+                        AppSettings.Instance.StreamingServiceNames
+                            .Any(s => !string.IsNullOrWhiteSpace(s) && title.Contains(s.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                    if (_watching || _streaming)
                         return false;
-                    }
-                    else if (name.Contains("edge"))
-                    {
-                        _edge = true;
-                        _watching = false;
-                        return false;
-                    }
                 }
                 catch
                 {
                 }
 
                 _watching = false;
-                _edge = false;
+                _streaming = false;
                 return true;
+            }
+
+            private static string GetWindowTitle(IntPtr hWnd)
+            {
+                int length = GetWindowTextLength(hWnd);
+                if (length == 0)
+                    return string.Empty;
+
+                var builder = new StringBuilder(length + 1);
+                GetWindowText(hWnd, builder, builder.Capacity);
+                return builder.ToString();
             }
         }
 
@@ -424,6 +484,10 @@ namespace ControllerMagic
         private double _dxRemainder;
         private double _dyRemainder;
 
+        // Tick the stick was last pushed past the deadzone after being centered; 0 while centered.
+        // Drives the hold-time speed ramp below.
+        private long _moveHoldStartTick;
+
         private void ProcessSticks(PadState pad)
         {
             var lx = pad.LeftThumbX;
@@ -433,9 +497,15 @@ namespace ControllerMagic
             {
                 _dxRemainder = 0;
                 _dyRemainder = 0;
+                _moveHoldStartTick = 0;
                 HandleScroll(pad.RightThumbY, pad.RightThumbX);
                 return;
             }
+
+            long now = Environment.TickCount64;
+            if (_moveHoldStartTick == 0)
+                _moveHoldStartTick = now;
+            double heldSeconds = (now - _moveHoldStartTick) / 1000.0;
 
             var normX = lx / 32767.0;
             var normY = ly / 32767.0;
@@ -444,8 +514,9 @@ namespace ControllerMagic
             if (normMag > 1.0) normMag = 1.0;
 
             var curvedMag = Math.Pow(normMag, StickAccelPower);
+            var holdRamp = ComputeHoldRamp(heldSeconds, StickRampSeconds);
 
-            var factor = curvedMag * StickSensitivity * 1000.0;
+            var factor = curvedMag * holdRamp * StickSensitivity * 1000.0;
 
             double exactDx = normX * factor + _dxRemainder;
             double exactDy = -normY * factor + _dyRemainder;
@@ -462,6 +533,19 @@ namespace ControllerMagic
             HandleScroll(pad.RightThumbY, pad.RightThumbX);
         }
 
+        // Logistic (S-curve) ramp: near 0 right after the stick leaves the deadzone, crosses the
+        // midpoint at rampSeconds/2, and is near 1 by rampSeconds - a quick tap stays slow and
+        // precise, while a sustained push reaches full speed quickly rather than snapping there
+        // instantly. rampSeconds <= 0 disables the ramp (always full speed, prior behavior).
+        private static double ComputeHoldRamp(double heldSeconds, double rampSeconds)
+        {
+            if (rampSeconds <= 0.01)
+                return 1.0;
+
+            double midpoint = rampSeconds / 2.0;
+            double steepness = Math.Log(19.0) / midpoint; // spans ~5% -> ~95% across [0, rampSeconds]
+            return 1.0 / (1.0 + Math.Exp(-steepness * (heldSeconds - midpoint)));
+        }
 
         private const int WheelNotch = 120; // one wheel "notch" in Windows
 
@@ -542,12 +626,15 @@ namespace ControllerMagic
 
             if (!_keyboardMode)
             {
-                if (B_pressed && !_edge)
+                if (B_pressed && !_streaming)
                     InputEmulator.SendKey(VK_BACK);
                 else if (B_pressed)
                     InputEmulator.SendKey(VK_ESCAPE);
 
-                if (X_pressed && (_watching || _edge))
+                // 'S' is only bound to Skip Intro for actual streaming services - see the
+                // _streaming computation in FullscreenHelper. Generic fullscreen apps (VLC, Steam,
+                // Explorer, etc.) fall through to a plain right-click instead.
+                if (X_pressed && _streaming)
                     InputEmulator.SendKey(VK_S);
                 else if (X_pressed)
                     InputEmulator.RightClick();
@@ -555,7 +642,7 @@ namespace ControllerMagic
                 if (Y_pressed)
                     InputEmulator.SendKey(VK_MEDIA_PLAY_PAUSE);
 
-                if (_watching || _edge)
+                if (_watching || _streaming)
                 {
                     if (Up_pressed)
                         InputEmulator.SendKey(VK_UP);

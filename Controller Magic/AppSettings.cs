@@ -13,7 +13,7 @@ namespace ControllerMagic
         public int KeyboardDeadZone { get; set; } = 6000;
 
         // Stick sensitivity
-        public float StickSensitivity { get; set; } = 0.015f;
+        public float StickSensitivity { get; set; } = 0.018f;
 
         public bool RunAtStartup { get; set; } = false;
 
@@ -23,11 +23,26 @@ namespace ControllerMagic
         // old default of 0.05 felt twitchy instead of smooth.
         public float StickAccelPower { get; set; } = 2.0f;
 
+        // Seconds of continuously holding the stick deflected before cursor speed reaches full
+        // ramp-up, following an S-curve (slow start, fast middle, leveling off) rather than an
+        // instant jump - lets a quick nudge stay precise while a sustained push still reaches full
+        // speed quickly. 0 disables the ramp (speed is driven by deflection alone, as before).
+        public float StickRampSeconds { get; set; } = 0.35f;
+
         // Process names (substring match) whose fullscreen windows still receive
         // controller input instead of being treated as a game and blocked.
         public List<string> WatchedProcessNames { get; set; } = new()
         {
             "firefox", "vlc", "chrome", "explorer", "recorder", "steam"
+        };
+
+        // Window-title keywords (substring match) identifying an actual streaming service, where
+        // the D-pad's 'S' press is meaningful as a "Skip Intro" shortcut. Deliberately a separate,
+        // narrower list from WatchedProcessNames: generic fullscreen apps like VLC or Steam
+        // shouldn't get 'S' bound to anything, since it isn't a real shortcut there.
+        public List<string> StreamingServiceNames { get; set; } = new()
+        {
+            "Netflix", "Prime Video", "Disney+", "Hulu", "Max", "Paramount+", "Peacock", "Apple TV"
         };
 
         private static string SettingsPath =>

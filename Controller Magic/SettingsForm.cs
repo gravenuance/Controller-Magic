@@ -12,6 +12,7 @@ namespace ControllerMagic
             public required Func<int> Get { get; init; }
             public required Action<int> Set { get; init; }
             public required Func<int, string> FormatLabel { get; init; }
+            public required Action RequestSave { get; init; }
 
             public void RefreshFromSettings()
             {
@@ -22,7 +23,7 @@ namespace ControllerMagic
             public void Commit()
             {
                 Set(TrackBar.Value);
-                AppSettings.Instance.Save();
+                RequestSave();
                 Label.Text = FormatLabel(TrackBar.Value);
             }
         }
@@ -33,11 +34,41 @@ namespace ControllerMagic
         private int _layoutY = 20;
         private int _nextTabIndex;
 
+        private readonly System.Windows.Forms.Timer _saveDebounceTimer;
+        private bool _saveDirty;
+
         public SettingsForm()
         {
             InitializeComponent();
             Icon = ControllerMagic.Properties.Resources.Controller;
+
+            _saveDebounceTimer = new System.Windows.Forms.Timer { Interval = 400 };
+            _saveDebounceTimer.Tick += (_, __) => FlushPendingSave();
+
             BuildLayout();
+        }
+
+        // Slider drags fire Scroll continuously, so saving on every tick means a synchronous file
+        // write per pixel of movement. Batch changes and write once after a short idle gap instead.
+        private void RequestSave()
+        {
+            _saveDirty = true;
+            _saveDebounceTimer.Stop();
+            _saveDebounceTimer.Start();
+        }
+
+        private void FlushPendingSave()
+        {
+            _saveDebounceTimer.Stop();
+            if (!_saveDirty) return;
+            _saveDirty = false;
+            AppSettings.Instance.Save();
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            FlushPendingSave();
+            base.OnFormClosed(e);
         }
 
         private void BuildLayout()
@@ -60,6 +91,11 @@ namespace ControllerMagic
                 get: () => (int)Math.Round(AppSettings.Instance.StickAccelPower * 10f),
                 set: v => AppSettings.Instance.StickAccelPower = v / 10f,
                 format: FormatAccelPowerLabel);
+            AddSlider(
+                min: 0, max: 100, tickFrequency: 10,
+                get: () => (int)Math.Round(AppSettings.Instance.StickRampSeconds * 100f),
+                set: v => AppSettings.Instance.StickRampSeconds = v / 100f,
+                format: FormatRampLabel);
 
             AddSectionHeader("Other deadzones");
             AddSlider(
@@ -74,7 +110,14 @@ namespace ControllerMagic
                 format: v => $"Stick deadzone (keyboard): {v}");
 
             AddSectionHeader("Full-screen apps");
-            AddFullscreenAppsRow();
+            AddCommaListRow(
+                "Comma-separated process names",
+                () => AppSettings.Instance.WatchedProcessNames,
+                v => AppSettings.Instance.WatchedProcessNames = v);
+            AddCommaListRow(
+                "Streaming services (window-title keywords for the 'S' Skip Intro key)",
+                () => AppSettings.Instance.StreamingServiceNames,
+                v => AppSettings.Instance.StreamingServiceNames = v);
 
             ClientSize = new Size(ClientSize.Width, _layoutY + LeftMargin);
         }
@@ -97,6 +140,16 @@ namespace ControllerMagic
                 f < 2.5f ? "balanced" :
                 f < 3.5f ? "aggressive" : "very aggressive";
             return $"Stick acceleration curve ({f:0.0} - {note})";
+        }
+
+        private static string FormatRampLabel(int value)
+        {
+            float f = value / 100f;
+            string note =
+                f < 0.01f ? "instant" :
+                f < 0.25f ? "quick" :
+                f < 0.6f ? "balanced" : "gradual";
+            return $"Stick speed ramp-up ({f:0.00}s - {note})";
         }
 
         // Draws a thin divider (skipped above the very first section) plus a small caption, so
@@ -146,7 +199,7 @@ namespace ControllerMagic
             };
             _layoutY += 50;
 
-            var slider = new SliderSetting { Label = label, TrackBar = trackBar, Get = get, Set = set, FormatLabel = format };
+            var slider = new SliderSetting { Label = label, TrackBar = trackBar, Get = get, Set = set, FormatLabel = format, RequestSave = RequestSave };
             slider.RefreshFromSettings();
             trackBar.Scroll += (_, __) => slider.Commit();
 
@@ -193,14 +246,14 @@ namespace ControllerMagic
             _layoutY += 40;
         }
 
-        private void AddFullscreenAppsRow()
+        private void AddCommaListRow(string caption, Func<List<string>> get, Action<List<string>> set)
         {
             Controls.Add(new Label
             {
                 AutoSize = true,
                 ForeColor = Color.Lime,
                 Location = new Point(LeftMargin, _layoutY),
-                Text = "Comma-separated process names"
+                Text = caption
             });
             _layoutY += 20;
 
@@ -211,19 +264,19 @@ namespace ControllerMagic
                 BorderStyle = BorderStyle.FixedSingle,
                 Location = new Point(LeftMargin, _layoutY),
                 Size = new Size(ContentWidth, 23),
-                Text = string.Join(", ", AppSettings.Instance.WatchedProcessNames),
+                Text = string.Join(", ", get()),
                 TabIndex = _nextTabIndex++
             };
             textBox.Leave += (_, __) =>
             {
-                var names = textBox.Text
+                var items = textBox.Text
                     .Split(',')
                     .Select(n => n.Trim())
                     .Where(n => n.Length > 0)
                     .ToList();
 
-                AppSettings.Instance.WatchedProcessNames = names;
-                AppSettings.Instance.Save();
+                set(items);
+                RequestSave();
             };
 
             Controls.Add(textBox);
