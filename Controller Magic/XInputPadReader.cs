@@ -8,6 +8,36 @@ namespace ControllerMagic;
 // matters for a background tray utility like this one.
 internal static class XInputPadReader
 {
+    // XInput exposes 4 fixed slots; a controller can land in any of them depending on plug-in
+    // order, so hardcoding slot 0 misses anything not lucky enough to claim it first. Sticking
+    // with the last slot that worked avoids hopping between controllers if more than one is
+    // connected, only rescanning once that slot actually goes quiet.
+    private static int _lastSlot;
+
+    // Slot the last successful TryReadAny() call landed on - only meaningful right after a call
+    // that returned true. Exists so the UI can show which XInput slot the controller claimed.
+    public static int LastSlot => _lastSlot;
+
+    public static bool TryReadAny(out PadState pad)
+    {
+        if (TryRead(_lastSlot, out pad))
+            return true;
+
+        for (int i = 0; i < 4; i++)
+        {
+            if (i == _lastSlot)
+                continue;
+
+            if (TryRead(i, out pad))
+            {
+                _lastSlot = i;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static bool TryRead(int userIndex, out PadState pad)
     {
         pad = default;

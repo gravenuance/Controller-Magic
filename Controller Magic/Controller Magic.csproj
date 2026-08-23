@@ -25,6 +25,9 @@
 
   <ItemGroup>
     <Content Include="controller.ico" />
+    <Content Include="THIRD-PARTY-NOTICES.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

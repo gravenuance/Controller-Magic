@@ -10,10 +10,14 @@ namespace ControllerMagic
         private readonly System.Windows.Forms.Timer _timer;
         private bool _wasKeyboardMode;
 
-        private readonly SolidBrush _textBrush = new(Color.Lime);
-        private readonly SolidBrush _hotBrush = new(Color.FromArgb(200, 0, 255, 0));
-        private readonly SolidBrush _normalBrush = new(Color.FromArgb(178, 10, 10, 10));
-        private readonly Pen _pen = new(Color.Lime, 1.5f);
+        // BackColor/TransparencyKey below must stay pure black - that exact color is the chroma
+        // key that makes the rest of the window invisible, so only these drawn tiles show up
+        // floating over the desktop. Everything drawn onto it follows the amber instrument-panel
+        // palette used everywhere else now, in place of the old neon lime.
+        private readonly SolidBrush _textBrush = new(Theme.Ink);
+        private readonly SolidBrush _hotBrush = new(Color.FromArgb(220, Theme.Accent));
+        private readonly SolidBrush _normalBrush = new(Color.FromArgb(190, Theme.Surface));
+        private readonly Pen _pen = new(Theme.Accent, 1.5f);
         private readonly Font _tileFont = new("Segoe UI", 16f, FontStyle.Bold);
         private readonly Font _legendFont = new("Segoe UI", 12f, FontStyle.Regular);
         private readonly StringFormat _centerFormat = new()

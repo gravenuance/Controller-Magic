@@ -32,12 +32,30 @@ namespace ControllerMagic
 
             _trayIcon.ContextMenuStrip = menu;
 
+            EnsureStartupConfigured();
+
             _controllerPoller = new ControllerPoller();
             _controllerPoller.KeyboardModeChanged += OnKeyboardModeChanged;
             _controllerPoller.Start();
 
             _overlay = new KeyboardOverlayForm(_controllerPoller);
             _overlay.Show();
+        }
+
+        // Runs once, ever, the first time the app starts: if startup has never been configured,
+        // default it to on - no prompt. StartupHelper.SetEnabled already handles the unelevated
+        // task attempt, the UAC-elevated retry if that's denied, and the Run-key fallback if
+        // elevation is declined, so this can still surface a UAC prompt on locked-down machines;
+        // it just isn't an app-level dialog asking permission first.
+        private static void EnsureStartupConfigured()
+        {
+            if (AppSettings.Instance.HasInitializedStartup)
+                return;
+
+            AppSettings.Instance.HasInitializedStartup = true;
+            StartupHelper.SetEnabled(true);
+            AppSettings.Instance.RunAtStartup = true;
+            AppSettings.Instance.Save();
         }
 
         private void OnKeyboardModeChanged(bool enabled)
@@ -79,7 +97,7 @@ namespace ControllerMagic
 
         private void OnSettingsClick(object? sender, EventArgs e)
         {
-            using var form = new SettingsForm();
+            using var form = new SettingsForm(_controllerPoller);
             form.ShowDialog();
         }
 

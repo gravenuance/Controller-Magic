@@ -248,6 +248,13 @@ namespace ControllerMagic
         public bool KeyboardMode => _keyboardMode;
         public int KeyboardLayer => _keyboardLayer;
         public int CurrentSector => _currentSector;
+
+        // Written on the poll thread, read from the UI thread by Settings' status row. Plain
+        // bool/string assignment is atomic in .NET, so this doesn't need a lock for a
+        // best-effort status display.
+        public volatile bool IsControllerConnected;
+        public string ControllerStatusText { get; private set; } = "No controller detected";
+
         public static KeyEntry[,,] KeyboardLayout => Daisywheel;
         private static int StickDeadZone => AppSettings.Instance.StickDeadZone;
         private static int ScrollDeadZone => AppSettings.Instance.ScrollDeadZone;
@@ -449,7 +456,17 @@ namespace ControllerMagic
                     continue;
                 }
 
-                if (XInputPadReader.TryRead(0, out var pad) || sdlPadReader.TryGetLatest(out pad))
+                bool gotXInput = XInputPadReader.TryReadAny(out var pad);
+                bool gotPad = gotXInput || sdlPadReader.TryGetLatest(out pad);
+
+                IsControllerConnected = gotPad;
+                ControllerStatusText = gotXInput
+                    ? $"XInput controller · slot {XInputPadReader.LastSlot}"
+                    : gotPad
+                        ? "Controller connected (SDL)"
+                        : "No controller detected";
+
+                if (gotPad)
                 {
                     pad.Buttons = DebounceButtons(pad.Buttons);
 
@@ -537,7 +554,7 @@ namespace ControllerMagic
         // midpoint at rampSeconds/2, and is near 1 by rampSeconds - a quick tap stays slow and
         // precise, while a sustained push reaches full speed quickly rather than snapping there
         // instantly. rampSeconds <= 0 disables the ramp (always full speed, prior behavior).
-        private static double ComputeHoldRamp(double heldSeconds, double rampSeconds)
+        internal static double ComputeHoldRamp(double heldSeconds, double rampSeconds)
         {
             if (rampSeconds <= 0.01)
                 return 1.0;

@@ -6,24 +6,12 @@ namespace ControllerMagic
         [STAThread]
         static void Main(string[] args)
         {
-            // StartupHelper launches both the scheduled task and the Run-key fallback with this
-            // flag. If both ever end up configured at once (or an automatic launch simply loses
-            // the race to one the user started by hand), the loser should exit quietly instead of
-            // popping a dialog nobody's watching for at login.
-            bool isAutoStart = args.Any(a => string.Equals(a, "--startup", StringComparison.OrdinalIgnoreCase));
-
+            // A second launch (double-clicked by hand, triggered by the startup task, whatever)
+            // just quietly exits - the app is already running, and a "did you know" dialog isn't
+            // worth interrupting whatever the user's doing for.
             if (!_mutex.WaitOne(0, false))
-            {
-                if (!isAutoStart)
-                {
-                    MessageBox.Show(
-                        "Controller Magic is already running (check the system tray).",
-                        "Controller Magic",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
-                }
                 return;
-            }
+
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) => HandleFatalException(e.Exception);
             AppDomain.CurrentDomain.UnhandledException += (_, e) => HandleFatalException(e.ExceptionObject as Exception);
