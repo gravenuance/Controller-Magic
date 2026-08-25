@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace ControllerMagic
 {
-    internal class TrayApplicationContext : ApplicationContext
+    internal sealed class TrayApplicationContext : ApplicationContext
     {
         private readonly NotifyIcon _trayIcon;
         private readonly ControllerPoller _controllerPoller;
@@ -82,7 +82,7 @@ namespace ControllerMagic
             }
         }
 
-        private void PositionOverlayOnActiveMonitor(Form form)
+        private static void PositionOverlayOnActiveMonitor(Form form)
         {
             var cursorPos = Cursor.Position;
             var activeScreen = Screen.FromPoint(cursorPos);
@@ -132,6 +132,21 @@ namespace ControllerMagic
             _trayIcon.Dispose();
 
             base.ExitThreadCore();
+        }
+
+        // ExitThreadCore already disposes these eagerly (so the tray icon vanishes immediately on
+        // Exit, without waiting for the message loop to fully unwind) and Dispose() on an
+        // already-disposed NotifyIcon/Form is a safe no-op, so this is a belt-and-suspenders
+        // guarantee for any disposal path that doesn't go through ExitThreadCore first, rather
+        // than something expected to normally run first.
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _trayIcon.Dispose();
+                _overlay?.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }

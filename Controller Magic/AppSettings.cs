@@ -15,11 +15,11 @@ namespace ControllerMagic
         // Stick sensitivity
         public float StickSensitivity { get; set; } = 0.018f;
 
-        public bool RunAtStartup { get; set; } = false;
+        public bool RunAtStartup { get; set; }
 
         // Whether the first-run startup default has already been established, so it's only ever
         // set up once - after that, whatever the user has it set to (on or off) is left alone.
-        public bool HasInitializedStartup { get; set; } = false;
+        public bool HasInitializedStartup { get; set; }
 
         // Exponent applied to the normalized stick magnitude (0..1) before scaling cursor speed.
         // >1 gives a gradual ramp - slow/precise near center, faster toward full deflection.
@@ -113,13 +113,14 @@ namespace ControllerMagic
             }
         }
 
+        private static readonly JsonSerializerOptions SaveOptions = new() { WriteIndented = true };
+
         public void Save()
         {
             try
             {
                 Directory.CreateDirectory(SettingsDirectory);
-                var options = new JsonSerializerOptions { WriteIndented = true };
-                string json = JsonSerializer.Serialize(this, options);
+                string json = JsonSerializer.Serialize(this, SaveOptions);
                 File.WriteAllText(SettingsPath, json);
             }
             catch (Exception ex)

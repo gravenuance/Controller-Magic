@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace ControllerMagic
 {
-    internal partial class KeyboardOverlayForm : Form
+    internal sealed partial class KeyboardOverlayForm : Form
     {
 
         private readonly ControllerPoller _poller;

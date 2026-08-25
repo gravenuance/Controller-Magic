@@ -1,12 +1,11 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace ControllerMagic
 {
-    internal class ControllerPoller
+    internal sealed class ControllerPoller
     {
-        public struct KeyEntry
+        internal struct KeyEntry
         {
             public ushort Vk;
             public char Display;
@@ -287,7 +286,7 @@ namespace ControllerMagic
             if (_running) return;
 
             _running = true;
-            timeBeginPeriod(1);
+            _ = timeBeginPeriod(1);
             _thread = new Thread(Loop)
             {
                 IsBackground = true,
@@ -300,7 +299,7 @@ namespace ControllerMagic
         {
             _running = false;
             _thread?.Join();
-            timeEndPeriod(1);
+            _ = timeEndPeriod(1);
         }
 
         internal static class FullscreenHelper
@@ -320,8 +319,12 @@ namespace ControllerMagic
             [DllImport("user32.dll")]
             private static extern int GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
 
+            // A char[] marshals by pinning directly; StringBuilder here would make the interop
+            // marshaler allocate its own native buffer and copy through it twice (once into that
+            // buffer, once into the StringBuilder) for no benefit, since the result is only ever
+            // read once immediately below.
             [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-            private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+            private static extern int GetWindowText(IntPtr hWnd, char[] lpString, int nMaxCount);
 
             [DllImport("user32.dll")]
             private static extern int GetWindowTextLength(IntPtr hWnd);
@@ -399,22 +402,25 @@ namespace ControllerMagic
                     return false;
                 }
 
-                GetWindowThreadProcessId(hWnd, out int pid);
+                _ = GetWindowThreadProcessId(hWnd, out int pid);
                 try
                 {
                     using var proc = Process.GetProcessById(pid);
                     string name = proc.ProcessName.ToLowerInvariant();
                     string title = GetWindowTitle(hWnd);
 
+                    // OrdinalIgnoreCase against the raw (non-lowercased) watched name instead of
+                    // lowercasing it first - same match, one fewer string allocation per entry per
+                    // check.
                     _watching = AppSettings.Instance.WatchedProcessNames
-                        .Any(w => !string.IsNullOrWhiteSpace(w) && name.Contains(w.Trim().ToLowerInvariant()));
+                        .Any(w => !string.IsNullOrWhiteSpace(w) && name.Contains(w.Trim(), StringComparison.OrdinalIgnoreCase));
 
                     // 'S' (Skip Intro) only makes sense for actual streaming services: something
                     // with a known streaming service name in its title, or Edge itself, since the
                     // Windows Store apps for these services (Netflix, Prime Video, Disney+, etc.)
                     // are usually just an Edge WebView host under the hood and don't always surface
                     // the service name in their title.
-                    _streaming = name.Contains("edge") ||
+                    _streaming = name.Contains("edge", StringComparison.OrdinalIgnoreCase) ||
                         AppSettings.Instance.StreamingServiceNames
                             .Any(s => !string.IsNullOrWhiteSpace(s) && title.Contains(s.Trim(), StringComparison.OrdinalIgnoreCase));
 
@@ -436,9 +442,9 @@ namespace ControllerMagic
                 if (length == 0)
                     return string.Empty;
 
-                var builder = new StringBuilder(length + 1);
-                GetWindowText(hWnd, builder, builder.Capacity);
-                return builder.ToString();
+                var buffer = new char[length + 1];
+                int copied = GetWindowText(hWnd, buffer, buffer.Length);
+                return copied > 0 ? new string(buffer, 0, copied) : string.Empty;
             }
         }
 

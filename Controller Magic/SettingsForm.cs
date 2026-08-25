@@ -1,6 +1,6 @@
 namespace ControllerMagic
 {
-    public partial class SettingsForm : Form
+    internal sealed partial class SettingsForm : Form
     {
         // Bundles a Slider with the get/set/format/visualization glue needed to keep it in sync
         // with AppSettings, so adding another slider is one AddSlider(...) call.
