@@ -19,6 +19,12 @@ namespace ControllerMagic
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
+            // The app's owner-drawn UI has always been dark regardless of the Windows theme (see
+            // Theme.cs); this extends that same intent to the pieces WinForms still renders itself
+            // - the tray's right-click menu and the crash dialog - instead of leaving them light.
+            // Stable as of .NET 10 (preview-only, behind WFO5001, on .NET 9).
+            Application.SetColorMode(SystemColorMode.Dark);
+
             var context = new TrayApplicationContext();
             Application.Run(context);
         }

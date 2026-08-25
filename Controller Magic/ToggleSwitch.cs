@@ -7,14 +7,13 @@ namespace ControllerMagic
     // of looking like any other button in the window.
     internal sealed class ToggleSwitch : Control
     {
-        private bool _checked;
         public bool Checked
         {
-            get => _checked;
+            get;
             set
             {
-                if (_checked == value) return;
-                _checked = value;
+                if (field == value) return;
+                field = value;
                 Invalidate();
                 CheckedChanged?.Invoke(this, EventArgs.Empty);
             }

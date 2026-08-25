@@ -6,11 +6,10 @@ namespace ControllerMagic
     // a bare number - the filled circle is the dead center, the outer ring is full stick throw.
     internal sealed class RadialGauge : Control
     {
-        private double _fraction;
         public double Fraction
         {
-            get => _fraction;
-            set { _fraction = Math.Clamp(value, 0.0, 1.0); Invalidate(); }
+            get;
+            set { field = Math.Clamp(value, 0.0, 1.0); Invalidate(); }
         }
 
         public Color RingColor { get; set; } = Color.FromArgb(46, 255, 255, 255);
@@ -40,7 +39,7 @@ namespace ControllerMagic
             using (var ringPen = new Pen(RingColor, 1f))
                 g.DrawEllipse(ringPen, cx - rOuter, cy - rOuter, rOuter * 2, rOuter * 2);
 
-            float rInner = Math.Max((float)(rOuter * _fraction), 1.4f);
+            float rInner = Math.Max((float)(rOuter * Fraction), 1.4f);
             using var fillBrush = new SolidBrush(Color.FromArgb(217, FillColor));
             g.FillEllipse(fillBrush, cx - rInner, cy - rInner, rInner * 2, rInner * 2);
         }

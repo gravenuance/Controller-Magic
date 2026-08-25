@@ -6,7 +6,7 @@
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
-            "program": "${workspaceFolder}/Controller Magic/bin/Debug/net8.0-windows/Controller Magic.dll",
+            "program": "${workspaceFolder}/Controller Magic/bin/Debug/net10.0-windows/Controller Magic.dll",
             "args": [],
             "cwd": "${workspaceFolder}/Controller Magic",
             "console": "internalConsole",

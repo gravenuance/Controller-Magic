@@ -7,19 +7,17 @@ namespace ControllerMagic
     // way to make a native TrackBar read as part of a flat instrument-panel design.
     internal sealed class Slider : Control
     {
-        private int _value;
-
         public int Minimum { get; set; }
         public int Maximum { get; set; } = 100;
 
         public int Value
         {
-            get => _value;
+            get;
             set
             {
                 int clamped = Math.Clamp(value, Minimum, Maximum);
-                if (_value == clamped) return;
-                _value = clamped;
+                if (field == clamped) return;
+                field = clamped;
                 Invalidate();
             }
         }
@@ -49,7 +47,7 @@ namespace ControllerMagic
             float usable = Width - ThumbRadius * 2f;
             float t = usable <= 0 ? 0 : Math.Clamp((x - ThumbRadius) / usable, 0f, 1f);
             int newValue = Minimum + (int)Math.Round(t * (Maximum - Minimum));
-            if (newValue != _value)
+            if (newValue != Value)
             {
                 Value = newValue;
                 Scroll?.Invoke(this, EventArgs.Empty);
@@ -91,7 +89,7 @@ namespace ControllerMagic
             };
             if (delta != 0)
             {
-                Value = _value + delta;
+                Value += delta;
                 Scroll?.Invoke(this, EventArgs.Empty);
                 e.Handled = true;
             }
@@ -107,7 +105,7 @@ namespace ControllerMagic
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
             float usable = Width - ThumbRadius * 2f;
-            float t = Maximum > Minimum ? (float)(_value - Minimum) / (Maximum - Minimum) : 0f;
+            float t = Maximum > Minimum ? (float)(Value - Minimum) / (Maximum - Minimum) : 0f;
             float thumbX = ThumbRadius + t * usable;
             float midY = Height / 2f;
 
