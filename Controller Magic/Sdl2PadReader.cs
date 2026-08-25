@@ -46,7 +46,9 @@ internal sealed class Sdl2PadReader : IDisposable
         return true;
     }
 
-    private void PumpEvents()
+    // Public so the poll loop can drain SDL's event queue every tick regardless of which source
+    // ends up supplying the frame - see the call site in ControllerPoller.Loop for why that matters.
+    public void PumpEvents()
     {
         while (SDL.SDL_PollEvent(out var e) != 0)
         {

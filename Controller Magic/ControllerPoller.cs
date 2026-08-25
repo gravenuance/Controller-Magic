@@ -456,6 +456,14 @@ namespace ControllerMagic
                     continue;
                 }
 
+                // TryGetLatest() also pumps SDL's event queue as a side effect. `gotXInput ||`
+                // short-circuiting past it below whenever XInput already has a frame - the common
+                // case for an Xbox-compatible pad - would leave that queue undrained (controller
+                // add/remove events, etc.) for as long as XInput keeps winning, growing without
+                // bound. Pumping unconditionally here keeps that housekeeping independent of which
+                // source ends up supplying the frame.
+                sdlPadReader.PumpEvents();
+
                 bool gotXInput = XInputPadReader.TryReadAny(out var pad);
                 bool gotPad = gotXInput || sdlPadReader.TryGetLatest(out pad);
 

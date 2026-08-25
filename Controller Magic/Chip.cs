@@ -23,7 +23,12 @@ namespace ControllerMagic
             Margin = new Padding(3);
             Height = 22;
 
-            using var g = CreateGraphics();
+            // CreateGraphics() would measure against the same real-screen DPI, but as a side
+            // effect it also forces this control's native window handle into existence right here
+            // in the constructor, before it's ever parented or shown - wasteful given ChipList
+            // rebuilds its whole Chip collection on every add/remove. The desktop DC measures
+            // identically without touching this control's handle at all.
+            using var g = Graphics.FromHwnd(IntPtr.Zero);
             var textSize = g.MeasureString(Text, MonoFont);
             Width = (int)textSize.Width + 9 + 22;
         }

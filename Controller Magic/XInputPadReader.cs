@@ -48,20 +48,24 @@ internal static class XInputPadReader
         var g = state.Gamepad;
         PadButtons buttons = PadButtons.None;
 
-        if (g.Buttons.HasFlag(GamepadButtons.A)) buttons |= PadButtons.A;
-        if (g.Buttons.HasFlag(GamepadButtons.B)) buttons |= PadButtons.B;
-        if (g.Buttons.HasFlag(GamepadButtons.X)) buttons |= PadButtons.X;
-        if (g.Buttons.HasFlag(GamepadButtons.Y)) buttons |= PadButtons.Y;
-        if (g.Buttons.HasFlag(GamepadButtons.LeftShoulder)) buttons |= PadButtons.LeftShoulder;
-        if (g.Buttons.HasFlag(GamepadButtons.RightShoulder)) buttons |= PadButtons.RightShoulder;
-        if (g.Buttons.HasFlag(GamepadButtons.Back)) buttons |= PadButtons.Back;
-        if (g.Buttons.HasFlag(GamepadButtons.Start)) buttons |= PadButtons.Start;
-        if (g.Buttons.HasFlag(GamepadButtons.LeftThumb)) buttons |= PadButtons.LeftThumb;
-        if (g.Buttons.HasFlag(GamepadButtons.RightThumb)) buttons |= PadButtons.RightThumb;
-        if (g.Buttons.HasFlag(GamepadButtons.DPadUp)) buttons |= PadButtons.DPadUp;
-        if (g.Buttons.HasFlag(GamepadButtons.DPadDown)) buttons |= PadButtons.DPadDown;
-        if (g.Buttons.HasFlag(GamepadButtons.DPadLeft)) buttons |= PadButtons.DPadLeft;
-        if (g.Buttons.HasFlag(GamepadButtons.DPadRight)) buttons |= PadButtons.DPadRight;
+        // Same boxing pitfall as ControllerPoller.WasPressed, but worse here: this runs
+        // unconditionally every ~8ms tick whenever an XInput controller is connected, rather than
+        // only for buttons that are actually pressed. Bitwise checks avoid it entirely.
+        var gb = g.Buttons;
+        if ((gb & GamepadButtons.A) != 0) buttons |= PadButtons.A;
+        if ((gb & GamepadButtons.B) != 0) buttons |= PadButtons.B;
+        if ((gb & GamepadButtons.X) != 0) buttons |= PadButtons.X;
+        if ((gb & GamepadButtons.Y) != 0) buttons |= PadButtons.Y;
+        if ((gb & GamepadButtons.LeftShoulder) != 0) buttons |= PadButtons.LeftShoulder;
+        if ((gb & GamepadButtons.RightShoulder) != 0) buttons |= PadButtons.RightShoulder;
+        if ((gb & GamepadButtons.Back) != 0) buttons |= PadButtons.Back;
+        if ((gb & GamepadButtons.Start) != 0) buttons |= PadButtons.Start;
+        if ((gb & GamepadButtons.LeftThumb) != 0) buttons |= PadButtons.LeftThumb;
+        if ((gb & GamepadButtons.RightThumb) != 0) buttons |= PadButtons.RightThumb;
+        if ((gb & GamepadButtons.DPadUp) != 0) buttons |= PadButtons.DPadUp;
+        if ((gb & GamepadButtons.DPadDown) != 0) buttons |= PadButtons.DPadDown;
+        if ((gb & GamepadButtons.DPadLeft) != 0) buttons |= PadButtons.DPadLeft;
+        if ((gb & GamepadButtons.DPadRight) != 0) buttons |= PadButtons.DPadRight;
 
         pad = new PadState
         {
