@@ -460,11 +460,7 @@ namespace ControllerMagic
                 bool gotPad = gotXInput || sdlPadReader.TryGetLatest(out pad);
 
                 IsControllerConnected = gotPad;
-                ControllerStatusText = gotXInput
-                    ? $"XInput controller · slot {XInputPadReader.LastSlot}"
-                    : gotPad
-                        ? "Controller connected (SDL)"
-                        : "No controller detected";
+                UpdateStatusText(gotXInput, gotPad);
 
                 if (gotPad)
                 {
@@ -480,6 +476,32 @@ namespace ControllerMagic
 
                 Thread.Sleep(8);
             }
+        }
+
+        // -1 = uninitialized, 0 = XInput, 1 = SDL, 2 = none. Interpolating ControllerStatusText
+        // fresh every tick (the loop runs at ~125Hz) allocated a new string every 8ms for as long
+        // as a controller stayed connected; recomputing it only when the underlying state actually
+        // changes turns that into an allocation on connect/disconnect/slot-change instead.
+        private int _lastStatusKind = -1;
+        private int _lastStatusSlot = -1;
+
+        private void UpdateStatusText(bool gotXInput, bool gotPad)
+        {
+            int kind = gotXInput ? 0 : gotPad ? 1 : 2;
+            int slot = gotXInput ? XInputPadReader.LastSlot : -1;
+
+            if (kind == _lastStatusKind && slot == _lastStatusSlot)
+                return;
+
+            _lastStatusKind = kind;
+            _lastStatusSlot = slot;
+
+            ControllerStatusText = kind switch
+            {
+                0 => $"XInput controller · slot {slot}",
+                1 => "Controller connected (SDL)",
+                _ => "No controller detected"
+            };
         }
 
         // Some pads (PS4/PS5 over Bluetooth especially, or when routed through a virtual XInput
@@ -597,14 +619,18 @@ namespace ControllerMagic
 
         public event Action<bool>? KeyboardModeChanged;
 
+        // Enum.HasFlag boxes both the receiver and the argument on every call; at this loop's
+        // ~125Hz cadence with a dozen-plus flags checked per tick, that's a steady stream of
+        // avoidable GC pressure. PadButtons is a plain int-backed [Flags] enum, so a bitwise
+        // check is both cheaper and allocation-free.
         private bool WasPressed(PadButtons current, PadButtons flag) =>
-            current.HasFlag(flag) && !_prevButtons.HasFlag(flag);
+            (current & flag) != 0 && (_prevButtons & flag) == 0;
 
         private void ProcessButtons(PadState pad)
         {
             var buttons = pad.Buttons;
 
-            bool A_down = buttons.HasFlag(PadButtons.A);
+            bool A_down = (buttons & PadButtons.A) != 0;
 
             bool B_pressed = WasPressed(buttons, PadButtons.B);
             bool X_pressed = WasPressed(buttons, PadButtons.X);

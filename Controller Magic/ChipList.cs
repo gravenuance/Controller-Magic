@@ -89,7 +89,14 @@ namespace ControllerMagic
         private void Rebuild()
         {
             SuspendLayout();
+
+            // Controls.Clear() only unparents children, it doesn't Dispose() them - left alone,
+            // every add/remove here would leak the previous batch of Chip controls (and their
+            // native window handles) instead of freeing them.
+            foreach (Control c in Controls.Cast<Control>().Where(c => c != _addBox).ToList())
+                c.Dispose();
             Controls.Clear();
+
             foreach (var item in _items)
             {
                 var chip = new Chip(item)

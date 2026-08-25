@@ -10,6 +10,11 @@ namespace ControllerMagic
             {
                 components.Dispose();
             }
+            if (disposing)
+            {
+                _statusTimer.Dispose();
+                _saveDebounceTimer.Dispose();
+            }
             base.Dispose(disposing);
         }
 
