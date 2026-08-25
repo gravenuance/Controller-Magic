@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ControllerMagic</RootNamespace>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
@@ -11,6 +11,11 @@
     <StartupObject>ControllerMagic.Program</StartupObject>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+
+    <!-- All UI in this project is built at runtime in code (see SettingsForm.Designer.cs) and
+         none of the custom controls below are ever bound in the WinForms Designer, so WFO1000's
+         designer-serialization requirement doesn't apply here. -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
 
     <Product>Controller Magic</Product>
     <AssemblyTitle>Turn a controller into a mouse, keyboard, and media remote</AssemblyTitle>
