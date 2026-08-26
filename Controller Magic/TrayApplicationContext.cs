@@ -1,12 +1,24 @@
 using System.Diagnostics;
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 
 namespace ControllerMagic
 {
     internal sealed class TrayApplicationContext : ApplicationContext
     {
+        // Segoe MDL2 Assets glyphs - gear, refresh arrows, plain X - rendered to small bitmaps
+        // for the space to the left of each context-menu item. ToolStripItem doesn't dispose its
+        // own Image, so these are tracked and disposed alongside the tray icon below.
+        private const char GearGlyph = '';
+        private const char RefreshGlyph = '';
+        private const char CancelGlyph = '';
+
         private readonly NotifyIcon _trayIcon;
         private readonly ControllerPoller _controllerPoller;
         private readonly KeyboardOverlayForm _overlay;
+        private readonly Bitmap _settingsIcon;
+        private readonly Bitmap _restartIcon;
+        private readonly Bitmap _exitIcon;
 
         public TrayApplicationContext()
         {
@@ -19,11 +31,15 @@ namespace ControllerMagic
                 Visible = true
             };
 
+            _settingsIcon = CreateMenuIcon(GearGlyph);
+            _restartIcon = CreateMenuIcon(RefreshGlyph);
+            _exitIcon = CreateMenuIcon(CancelGlyph);
+
             var menu = new ContextMenuStrip();
 
-            var settingsItem = new ToolStripMenuItem("Settings...", null, OnSettingsClick);
-            var restartItem = new ToolStripMenuItem("Restart", null, OnRestartClick);
-            var exitItem = new ToolStripMenuItem("Exit", null, OnExitClick);
+            var settingsItem = new ToolStripMenuItem("Settings...", _settingsIcon, OnSettingsClick);
+            var restartItem = new ToolStripMenuItem("Restart", _restartIcon, OnRestartClick);
+            var exitItem = new ToolStripMenuItem("Exit", _exitIcon, OnExitClick);
 
             menu.Items.Add(settingsItem);
             menu.Items.Add(new ToolStripSeparator());
@@ -57,6 +73,30 @@ namespace ControllerMagic
             StartupHelper.SetEnabled(true);
             AppSettings.Instance.RunAtStartup = true;
             AppSettings.Instance.Save();
+        }
+
+        // Renders a single icon-font glyph onto a small transparent bitmap, sized and centered to
+        // match the space WinForms reserves to the left of a ToolStripMenuItem's text (a plain
+        // 16x16 covers it with a touch of breathing room). Theme.Ink keeps it legible against the
+        // dark-mode menu background from Application.SetColorMode in Program.cs.
+        private static Bitmap CreateMenuIcon(char glyph)
+        {
+            const int size = 16;
+            var bitmap = new Bitmap(size, size);
+
+            using var g = Graphics.FromImage(bitmap);
+            using var brush = new SolidBrush(Theme.Ink);
+            using var format = new StringFormat
+            {
+                Alignment = StringAlignment.Center,
+                LineAlignment = StringAlignment.Center
+            };
+
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+            g.DrawString(glyph.ToString(), Theme.IconFont, brush, new RectangleF(0, 0, size, size), format);
+
+            return bitmap;
         }
 
         private void OnKeyboardModeChanged(bool enabled)
@@ -146,6 +186,9 @@ namespace ControllerMagic
             {
                 _trayIcon.Dispose();
                 _overlay?.Dispose();
+                _settingsIcon.Dispose();
+                _restartIcon.Dispose();
+                _exitIcon.Dispose();
             }
             base.Dispose(disposing);
         }
