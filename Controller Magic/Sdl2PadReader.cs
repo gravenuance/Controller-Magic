@@ -31,11 +31,6 @@ internal sealed class Sdl2PadReader : IDisposable
         if (!_initialized)
             return false;
 
-        PumpEvents();
-
-        if (_controller == IntPtr.Zero)
-            TryOpenFirstAvailable();
-
         if (_controller == IntPtr.Zero || SDL.SDL_GameControllerGetAttached(_controller) == SDL.SDL_bool.SDL_FALSE)
         {
             CloseController();
@@ -46,8 +41,14 @@ internal sealed class Sdl2PadReader : IDisposable
         return true;
     }
 
-    // Public so the poll loop can drain SDL's event queue every tick regardless of which source
-    // ends up supplying the frame - see the call site in ControllerPoller.Loop for why that matters.
+    // Public so the poll loop can run this every tick regardless of which source ends up
+    // supplying the frame - see the call site in ControllerPoller.Loop. Draining the event queue
+    // alone isn't enough: TryOpenFirstAvailable() also needs to run whenever no controller is
+    // currently open, or a second, non-XInput controller plugged in while an XInput one is already
+    // connected and successfully reading would never get picked up - since TryGetLatest (the only
+    // other place that used to call it) is skipped by `gotXInput ||` short-circuiting past it for
+    // as long as XInput keeps winning. Restarting the app "fixed" it only because that reset
+    // _controller back to IntPtr.Zero and gave this a fresh chance to run.
     public void PumpEvents()
     {
         while (SDL.SDL_PollEvent(out var e) != 0)
@@ -55,6 +56,9 @@ internal sealed class Sdl2PadReader : IDisposable
             if (e.type == SDL.SDL_EventType.SDL_CONTROLLERDEVICEREMOVED && e.cdevice.which == _controllerInstanceId)
                 CloseController();
         }
+
+        if (_controller == IntPtr.Zero)
+            TryOpenFirstAvailable();
     }
 
     private void TryOpenFirstAvailable()

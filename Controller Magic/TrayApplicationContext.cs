@@ -31,6 +31,7 @@ namespace ControllerMagic
             menu.Items.Add(exitItem);
 
             _trayIcon.ContextMenuStrip = menu;
+            _trayIcon.DoubleClick += OnSettingsClick;
 
             EnsureStartupConfigured();
 
