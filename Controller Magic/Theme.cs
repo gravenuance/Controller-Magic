@@ -27,5 +27,15 @@ namespace ControllerMagic
         // Single-color line-style glyphs at a small size read as "icon", not "text", which is what
         // the tray menu's item icons want without needing to ship or hand-draw bitmap assets.
         public static readonly Font IconFont = new("Segoe MDL2 Assets", 10f, FontStyle.Regular);
+
+        // Properties.Resources.Controller deserializes a brand-new native icon (a real GDI/USER
+        // handle) from the embedded .resx data on every access - it's a resource *getter*, not a
+        // cached singleton. Form.Icon doesn't take ownership of what's assigned to it either, so
+        // every place that used to read the resource directly (the tray icon once at startup, but
+        // also SettingsForm's window icon on every single Settings open) was leaking one native
+        // icon handle per access, with nothing left to ever dispose it. Loading it once here and
+        // sharing that one instance for the app's lifetime - the same pattern already used for the
+        // fonts above - fixes that at the root instead of chasing down a Dispose() call per site.
+        public static readonly Icon AppIcon = ControllerMagic.Properties.Resources.Controller;
     }
 }

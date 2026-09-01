@@ -70,7 +70,7 @@ namespace ControllerMagic
             _poller = poller;
 
             InitializeComponent();
-            Icon = ControllerMagic.Properties.Resources.Controller;
+            Icon = Theme.AppIcon;
 
             _saveDebounceTimer = new System.Windows.Forms.Timer { Interval = 400 };
             _saveDebounceTimer.Tick += (_, __) => FlushPendingSave();
