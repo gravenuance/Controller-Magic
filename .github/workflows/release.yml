@@ -56,7 +56,7 @@ jobs:
           $notes | Out-File -FilePath release-notes.md -Encoding utf8
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ env.ZIP_PATH }}
           body_path: release-notes.md
