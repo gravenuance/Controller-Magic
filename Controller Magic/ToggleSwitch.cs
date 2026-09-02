@@ -55,6 +55,19 @@ namespace ControllerMagic
         protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
         protected override bool IsInputKey(Keys keyData) => keyData is Keys.Space or Keys.Enter || base.IsInputKey(keyData);
 
+        // AccessibleName is set per-instance by whoever places this switch; this reports the
+        // on/off state through it, the same contract a native CheckBox gives a screen reader.
+        protected override AccessibleObject CreateAccessibilityInstance() => new ToggleAccessibleObject(this);
+
+        private sealed class ToggleAccessibleObject(ToggleSwitch owner) : ControlAccessibleObject(owner)
+        {
+            public override AccessibleRole Role => AccessibleRole.CheckButton;
+            public override AccessibleStates State =>
+                base.State
+                | (owner.Checked ? AccessibleStates.Checked : AccessibleStates.None)
+                | (owner.Focused ? AccessibleStates.Focused : AccessibleStates.None);
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;

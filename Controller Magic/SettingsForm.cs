@@ -112,27 +112,27 @@ namespace ControllerMagic
 
             BeginCard("Mouse movement");
             AddSlider(
-                name: "Deadzone", note: "Ignores drift near center",
+                name: "Deadzone",
                 min: 0, max: 10000,
                 get: () => AppSettings.Instance.StickDeadZone,
                 set: v => AppSettings.Instance.StickDeadZone = v,
                 formatReadout: v => $"{v} / 32767",
                 gaugeFraction: v => v / 10000.0);
             AddSlider(
-                name: "Sensitivity", note: null,
+                name: "Sensitivity",
                 min: 5, max: 60,
                 get: () => (int)Math.Round(AppSettings.Instance.StickSensitivity * 1000f),
                 set: v => AppSettings.Instance.StickSensitivity = v / 1000f,
                 formatReadout: v => (v / 1000f).ToString("0.000"));
             AddSlider(
-                name: "Acceleration curve", note: "Speed vs. how far you push",
+                name: "Acceleration curve",
                 min: 10, max: 40,
                 get: () => (int)Math.Round(AppSettings.Instance.StickAccelPower * 10f),
                 set: v => AppSettings.Instance.StickAccelPower = v / 10f,
                 formatReadout: v => (v / 10f).ToString("0.0"),
                 curveFn: (v, t) => Math.Pow(t, v / 10.0));
             AddSlider(
-                name: "Speed ramp-up", note: "Full speed vs. how long you hold it",
+                name: "Speed ramp-up",
                 min: 0, max: 100,
                 get: () => (int)Math.Round(AppSettings.Instance.StickRampSeconds * 100f),
                 set: v => AppSettings.Instance.StickRampSeconds = v / 100f,
@@ -146,13 +146,13 @@ namespace ControllerMagic
 
             BeginCard("Other deadzones");
             AddSlider(
-                name: "Scroll", note: null,
+                name: "Scroll",
                 min: 0, max: 10000,
                 get: () => AppSettings.Instance.ScrollDeadZone,
                 set: v => AppSettings.Instance.ScrollDeadZone = v,
                 formatReadout: v => v.ToString());
             AddSlider(
-                name: "Keyboard", note: null,
+                name: "Keyboard",
                 min: 0, max: 10000,
                 get: () => AppSettings.Instance.KeyboardDeadZone,
                 set: v => AppSettings.Instance.KeyboardDeadZone = v,
@@ -321,6 +321,7 @@ namespace ControllerMagic
                 };
                 _card.Controls.Add(head);
                 _cardY += 22;
+                _card.AccessibleName = title;
             }
         }
 
@@ -336,7 +337,7 @@ namespace ControllerMagic
         // ============ controls ============
 
         private void AddSlider(
-            string name, string? note, int min, int max,
+            string name, int min, int max,
             Func<int> get, Action<int> set, Func<int, string> formatReadout,
             Func<int, double, double>? curveFn = null,
             Func<int, double>? gaugeFraction = null)
@@ -368,20 +369,7 @@ namespace ControllerMagic
             };
             _card.Controls.Add(readout);
 
-            if (note != null)
-            {
-                var noteLabel = new Label
-                {
-                    Text = note,
-                    AutoSize = true,
-                    Location = new Point(CardPadding, _cardY + 15),
-                    Font = Theme.BodyFont,
-                    ForeColor = Theme.Muted,
-                };
-                _card.Controls.Add(noteLabel);
-            }
-
-            _cardY += note != null ? 33 : 20;
+            _cardY += 20;
 
             var slider = new Slider
             {
@@ -390,6 +378,7 @@ namespace ControllerMagic
                 Location = new Point(CardPadding, _cardY + 3),
                 Size = new Size(sliderWidth, 20),
                 TabIndex = _nextTabIndex++,
+                AccessibleName = name,
             };
             _card.Controls.Add(slider);
 
@@ -435,38 +424,57 @@ namespace ControllerMagic
             {
                 Text = "Start with Windows",
                 AutoSize = true,
-                Location = new Point(CardPadding, _cardY),
+                Location = new Point(CardPadding, _cardY + 3),
                 Font = Theme.UiFontBold,
                 ForeColor = Theme.Ink,
             };
-            var sub = new Label
-            {
-                Text = "Launches quietly in the tray at login",
-                AutoSize = true,
-                Location = new Point(CardPadding, _cardY + 16),
-                Font = Theme.BodyFont,
-                ForeColor = Theme.Muted,
-            };
 
+            // AppSettings' last-known value shows immediately - it's already in memory, no I/O
+            // needed - rather than blocking dialog construction on a schtasks.exe query. A
+            // background reconciliation below corrects it if the real OS state disagrees (e.g. the
+            // scheduled task was removed outside the app).
             var toggle = new ToggleSwitch
             {
-                Checked = StartupHelper.IsEnabled(),
+                Checked = AppSettings.Instance.RunAtStartup,
                 TabIndex = _nextTabIndex++,
+                AccessibleName = "Start with Windows",
             };
-            toggle.Location = new Point(_card.Width - CardPadding - toggle.Width, _cardY + 4);
-            AppSettings.Instance.RunAtStartup = toggle.Checked;
+            toggle.Location = new Point(_card.Width - CardPadding - toggle.Width, _cardY);
 
-            toggle.CheckedChanged += (_, __) =>
+            toggle.CheckedChanged += async (_, __) =>
             {
-                StartupHelper.SetEnabled(toggle.Checked);
+                // Deliberately not ConfigureAwait(false): RequestSave() below touches
+                // _saveDebounceTimer, a WinForms Timer that needs to stay on the UI thread.
+                await StartupHelper.SetEnabledAsync(toggle.Checked).ConfigureAwait(true);
                 AppSettings.Instance.RunAtStartup = toggle.Checked;
+                RequestSave();
             };
 
             _card.Controls.Add(title);
-            _card.Controls.Add(sub);
             _card.Controls.Add(toggle);
 
-            _cardY += 34;
+            _cardY += toggle.Height;
+
+            _ = ReconcileStartupToggleAsync(toggle);
+        }
+
+        private static async Task ReconcileStartupToggleAsync(ToggleSwitch toggle)
+        {
+            bool actuallyEnabled = await StartupHelper.IsEnabledAsync().ConfigureAwait(false);
+
+            if (toggle.IsDisposed || actuallyEnabled == toggle.Checked)
+                return;
+
+            void Apply()
+            {
+                if (!toggle.IsDisposed)
+                    toggle.Checked = actuallyEnabled;
+            }
+
+            if (toggle.InvokeRequired)
+                toggle.BeginInvoke((Action)Apply);
+            else
+                Apply();
         }
 
         private void AddChipField(string label, List<string> initialItems, Action<List<string>> onChanged)
@@ -489,6 +497,7 @@ namespace ControllerMagic
                 Location = new Point(CardPadding, _cardY),
                 MaximumSize = new Size(_card.Width - CardPadding * 2, 0),
                 TabIndex = _nextTabIndex++,
+                AccessibleName = label,
             };
             chips.ApplyPalette(Theme.Bg, Theme.Line, Theme.Ink, Theme.Muted, Theme.Surface2);
             chips.SetItems(initialItems);

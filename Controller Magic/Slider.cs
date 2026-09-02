@@ -40,6 +40,19 @@ namespace ControllerMagic
             Cursor = Cursors.Hand;
         }
 
+        // AccessibleName is set per-instance by whoever places this Slider (its on-screen label
+        // isn't known to the control itself); this reports the live numeric value/range through
+        // it, same contract a native TrackBar gives a screen reader.
+        protected override AccessibleObject CreateAccessibilityInstance() => new SliderAccessibleObject(this);
+
+        private sealed class SliderAccessibleObject(Slider owner) : ControlAccessibleObject(owner)
+        {
+            public override AccessibleRole Role => AccessibleRole.Slider;
+            public override string? Value => owner.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            public override AccessibleStates State =>
+                base.State | (owner.Focused ? AccessibleStates.Focused : AccessibleStates.None);
+        }
+
         private const int ThumbRadius = 7;
 
         private void SetFromMouseX(int x)

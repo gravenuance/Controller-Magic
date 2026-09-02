@@ -16,6 +16,11 @@ namespace ControllerMagic
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
             Size = new Size(64, 34);
+
+            // Purely decorative - it mirrors the paired Slider's own value, which a screen reader
+            // already reports via that control's AccessibleObject. Hidden rather than announced as
+            // an unlabeled, redundant "graphic".
+            AccessibleRole = AccessibleRole.None;
         }
 
         public void Redraw() => Invalidate();

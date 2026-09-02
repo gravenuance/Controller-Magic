@@ -23,6 +23,7 @@ namespace ControllerMagic
             AutoSize = true;
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
             Padding = new Padding(7);
+            AccessibleRole = AccessibleRole.Grouping;
 
             _addBox = new TextBox
             {

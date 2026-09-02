@@ -22,6 +22,8 @@ namespace ControllerMagic
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
             Margin = new Padding(3);
             Height = 22;
+            AccessibleRole = AccessibleRole.PushButton;
+            AccessibleName = $"Remove {text}";
 
             // CreateGraphics() would measure against the same real-screen DPI, but as a side
             // effect it also forces this control's native window handle into existence right here

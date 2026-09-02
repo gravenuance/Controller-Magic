@@ -14,6 +14,7 @@ namespace ControllerMagic
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             BackColor = Theme.Surface;
+            AccessibleRole = AccessibleRole.Grouping;
         }
 
         protected override void OnResize(EventArgs e)
