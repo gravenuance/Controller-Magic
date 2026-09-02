@@ -520,7 +520,7 @@ namespace ControllerMagic
         // face buttons - a spurious blip that WasPressed() would otherwise read as a real press
         // and fire on. Requiring two consecutive identical polls before trusting a reading filters
         // that out while staying well under human reaction time (this loop runs at ~125Hz).
-        private PadButtons DebounceButtons(PadButtons raw)
+        internal PadButtons DebounceButtons(PadButtons raw)
         {
             if (raw == _lastRawButtons)
                 _stableButtons = raw;
@@ -858,15 +858,23 @@ namespace ControllerMagic
         }
         private int GetSector(short lx, short ly)
         {
+            int sector = ComputeSector(lx, ly, KeyboardDeadZone);
+            _currentSector = sector;
+            return sector;
+        }
+
+        // Pure geometry, split out from GetSector so it's directly testable: KeyboardDeadZone
+        // reads AppSettings.Instance, which lazily loads the real settings.json from disk on
+        // first touch - not something a test should depend on. Mirrors the same
+        // pure-core-plus-stateful-wrapper split as ComputeHoldRamp below.
+        internal static int ComputeSector(short lx, short ly, int deadZone)
+        {
             int x = lx;
             int y = ly;
 
             int magSq = x * x + y * y;
-            if (magSq < KeyboardDeadZone * KeyboardDeadZone)
-            {
-                _currentSector = -1;
+            if (magSq < deadZone * deadZone)
                 return -1;
-            }
 
             double angleRad = Math.Atan2(y, x);
             double angleDeg = angleRad * (180.0 / Math.PI);
@@ -883,7 +891,6 @@ namespace ControllerMagic
             if (sector < 0 || sector >= 8)
                 sector = 0;
 
-            _currentSector = sector;
             return sector;
         }
     }

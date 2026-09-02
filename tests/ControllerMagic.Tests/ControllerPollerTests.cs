@@ -51,4 +51,93 @@ public class ControllerPollerTests
             previous = ramp;
         }
     }
+
+    [Fact]
+    public void ComputeSector_BelowDeadZone_ReturnsNegativeOne()
+    {
+        Assert.Equal(-1, ControllerPoller.ComputeSector(0, 0, deadZone: 6000));
+        Assert.Equal(-1, ControllerPoller.ComputeSector(100, 100, deadZone: 6000));
+    }
+
+    [Fact]
+    public void ComputeSector_ExactlyAtDeadZoneBoundary_IsNotGated()
+    {
+        // magSq == deadZone^2 should count as past the deadzone (the check is strictly "<").
+        Assert.NotEqual(-1, ControllerPoller.ComputeSector(6000, 0, deadZone: 6000));
+    }
+
+    [Theory]
+    [InlineData(0, 32767, 0)]     // straight up
+    [InlineData(-32767, 0, 2)]    // straight left
+    [InlineData(0, -32767, 4)]    // straight down
+    [InlineData(32767, 0, 6)]     // straight right
+    public void ComputeSector_CardinalDirections_ReturnExpectedSector(short lx, short ly, int expectedSector)
+    {
+        Assert.Equal(expectedSector, ControllerPoller.ComputeSector(lx, ly, deadZone: 6000));
+    }
+
+    [Fact]
+    public void ComputeSector_AlwaysReturnsAValidSectorOrNegativeOne()
+    {
+        for (int angle = 0; angle < 360; angle += 5)
+        {
+            double rad = angle * Math.PI / 180.0;
+            short lx = (short)(20000 * Math.Cos(rad));
+            short ly = (short)(20000 * Math.Sin(rad));
+
+            int sector = ControllerPoller.ComputeSector(lx, ly, deadZone: 6000);
+
+            Assert.True(sector is -1 or (>= 0 and < 8), $"angle={angle} produced out-of-range sector {sector}");
+        }
+    }
+
+    [Fact]
+    public void DebounceButtons_FirstReading_IsNotTrustedYet()
+    {
+        var poller = new ControllerPoller();
+
+        PadButtons result = poller.DebounceButtons(PadButtons.A);
+
+        Assert.Equal(PadButtons.None, result);
+    }
+
+    [Fact]
+    public void DebounceButtons_TwoConsecutiveIdenticalReadings_BecomesStable()
+    {
+        var poller = new ControllerPoller();
+
+        poller.DebounceButtons(PadButtons.A);
+        PadButtons result = poller.DebounceButtons(PadButtons.A);
+
+        Assert.Equal(PadButtons.A, result);
+    }
+
+    [Fact]
+    public void DebounceButtons_SingleTickFlicker_DoesNotDisturbAnAlreadyStableValue()
+    {
+        var poller = new ControllerPoller();
+        poller.DebounceButtons(PadButtons.A);
+        poller.DebounceButtons(PadButtons.A); // now stable at A
+
+        // A one-tick blip to B, immediately back to A, never repeats B twice in a row - the
+        // debounced value should never have visibly changed.
+        PadButtons duringFlicker = poller.DebounceButtons(PadButtons.B);
+        PadButtons afterFlicker = poller.DebounceButtons(PadButtons.A);
+
+        Assert.Equal(PadButtons.A, duringFlicker);
+        Assert.Equal(PadButtons.A, afterFlicker);
+    }
+
+    [Fact]
+    public void DebounceButtons_SustainedChange_EventuallyBecomesStable()
+    {
+        var poller = new ControllerPoller();
+        poller.DebounceButtons(PadButtons.A);
+        poller.DebounceButtons(PadButtons.A); // stable at A
+
+        poller.DebounceButtons(PadButtons.B);
+        PadButtons result = poller.DebounceButtons(PadButtons.B); // B held for 2 consecutive polls
+
+        Assert.Equal(PadButtons.B, result);
+    }
 }
