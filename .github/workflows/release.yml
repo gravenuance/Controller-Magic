@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore "Controller Magic.slnx"
+
+      - name: Test (Release)
+        run: dotnet test "Controller Magic.slnx" -c Release
+
+      - name: Publish self-contained single-file win-x64
+        run: dotnet publish "Controller Magic/Controller Magic.csproj" -p:PublishProfile=win-x64
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          $publishDir = "Controller Magic/bin/Release/net10.0-windows/publish/win-x64"
+          $zipPath = "ControllerMagic-${{ github.ref_name }}-win-x64.zip"
+          Compress-Archive -Path "$publishDir/*" -DestinationPath $zipPath
+          echo "ZIP_PATH=$zipPath" >> $env:GITHUB_ENV
+
+      # Pulls this tag's own section out of CHANGELOG.md (falling back to a plain note if the tag
+      # has no matching "## [x.y.z]" entry) so the release notes are always the actual changelog,
+      # not a re-typed summary that can drift from it.
+      - name: Extract release notes from CHANGELOG.md
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $content = Get-Content CHANGELOG.md -Raw
+          $sections = $content -split '(?m)(?=^## \[)'
+          $section = $sections | Where-Object { $_ -match "^## \[$([regex]::Escape($version))\]" } | Select-Object -First 1
+
+          if ($section) {
+              $notes = ($section -replace '^## \[[^\]]+\][^\r\n]*\r?\n', '').Trim()
+              if ([string]::IsNullOrWhiteSpace($notes)) { $notes = "No changelog details recorded for this release." }
+          } else {
+              $notes = "See CHANGELOG.md."
+          }
+
+          $notes | Out-File -FilePath release-notes.md -Encoding utf8
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_PATH }}
+          body_path: release-notes.md
+          fail_on_unmatched_files: true
