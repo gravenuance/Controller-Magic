@@ -8,16 +8,22 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-02
+
 ### Added
+- Icons on the tray's right-click menu, and double-clicking the tray icon now opens Settings
+  (same as the menu item).
 - A test project (`ControllerMagic.Tests`, xUnit v3 on Microsoft.Testing.Platform) covering
-  `AppSettings`' load/migrate/save behavior, `AppLog`'s formatting and rotation, and
-  `ControllerPoller.ComputeHoldRamp`'s S-curve.
+  `AppSettings`' load/migrate/save behavior, `AppLog`'s formatting and rotation,
+  `ControllerPoller`'s hold-ramp curve, deadzone/sector math, and button debounce.
 - A persistent, leveled application log (`%LocalAppData%\ControllerMagic\app.log`, rotated at 5MB)
   replacing `Debug.WriteLine` calls that were compiled out of Release builds entirely.
 - A settings schema-version field, so a future format change can migrate old `settings.json`
   files forward instead of misreading or dropping them.
 - `AccessibleObject`s for the custom `Slider` and `ToggleSwitch` controls, and accessible
   names/roles throughout Settings, so screen readers can navigate and report values there.
+- CI (build + test on every push/PR) and tag-triggered release automation
+  (publish, package, create the GitHub Release with that version's changelog section as notes).
 
 ### Changed
 - `settings.json` is now written atomically (temp file + rename) so a crash or power loss
@@ -29,6 +35,7 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   and control names already carry that meaning.
 - Analyzer configuration moved from the `.csproj` into a repo-root `Directory.Build.props` and
   `.editorconfig`, so every project in the repo inherits the same settings.
+- Upgraded to .NET 10.
 
 ### Fixed
 - A native icon handle leak (`Properties.Resources.Controller` was re-deserializing a fresh icon
