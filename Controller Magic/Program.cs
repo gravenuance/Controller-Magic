@@ -27,6 +27,16 @@ namespace ControllerMagic
             Application.ThreadException += (_, e) => HandleFatalException(e.Exception);
             AppDomain.CurrentDomain.UnhandledException += (_, e) => HandleFatalException(e.ExceptionObject as Exception);
 
+            // Not currently reachable (nothing here fires-and-forgets a Task without awaiting or
+            // observing it), but StartupHelper's process-spawning calls are moving to async - this
+            // is the safety net for whenever a future one is left unobserved, so a faulted
+            // background Task doesn't silently vanish instead of being logged.
+            TaskScheduler.UnobservedTaskException += (_, e) =>
+            {
+                AppLog.Default.Error("Unobserved task exception", e.Exception);
+                e.SetObserved();
+            };
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
@@ -53,15 +63,10 @@ namespace ControllerMagic
         {
             try
             {
-                string logDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "ControllerMagic");
-                Directory.CreateDirectory(logDir);
-                string logPath = Path.Combine(logDir, "crash.log");
-                File.AppendAllText(logPath, $"{DateTime.Now:u}{Environment.NewLine}{ex}{Environment.NewLine}{Environment.NewLine}");
+                AppLog.Default.Error("Unhandled exception", ex);
 
                 MessageBox.Show(
-                    $"Controller Magic hit an unexpected error and needs to close.\n\nDetails were saved to:\n{logPath}",
+                    $"Controller Magic crashed. Details saved to:\n{AppLog.Default.FilePath}",
                     "Controller Magic",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);

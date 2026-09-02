@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="Controller Magic/Controller Magic.csproj" />
+  <Project Path="tests/ControllerMagic.Tests/ControllerMagic.Tests.csproj" />
 </Solution>

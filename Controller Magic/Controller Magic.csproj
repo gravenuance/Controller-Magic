@@ -12,31 +12,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
 
-    <!-- All UI in this project is built at runtime in code (see SettingsForm.Designer.cs) and
-         none of the custom controls below are ever bound in the WinForms Designer, so WFO1000's
-         designer-serialization requirement doesn't apply here. -->
-    <NoWarn>$(NoWarn);WFO1000</NoWarn>
-
-    <EnableNETAnalyzers>true</EnableNETAnalyzers>
-    <AnalysisLevel>latest-all</AnalysisLevel>
-
-    <!-- CA2213 (disposable field never disposed): every flagged field is a child Control already
-         living in a parent's Controls collection (or a Form closed via Close(), which disposes by
-         default) - WinForms' own disposal cascade already handles these, which this general-purpose
-         rule can't see. TrayApplicationContext's NotifyIcon/overlay fields are the one case that
-         isn't part of that cascade, so those are hardened with an explicit Dispose(bool) override
-         instead of suppressed.
-         CA1303/CA1305/CA1308 (globalization: localize strings, specify IFormatProvider, normalize
-         casing): this is a single-culture English-only desktop utility with no current or planned
-         localization - NeutralLanguage above reflects that.
-         CA1031 (catch specific exception types): every site is a deliberate error boundary around
-         something that must not be allowed to crash the app or a background thread - settings I/O,
-         registry/schtasks calls, the top-level fatal-exception handler itself. Reviewed individually;
-         narrowing any of them would defeat their purpose.
-         CA1814 (multidimensional array): Daisywheel/KeyboardLayout is a fixed 3x8x4 lookup table -
-         a jagged array would trade a compact literal for ~24 nested array allocations with no
-         measurable benefit at this size. -->
-    <NoWarn>$(NoWarn);CA2213;CA1303;CA1305;CA1308;CA1031;CA1814</NoWarn>
+    <!-- Analyzer level and rule-suppression rationale live in the repo-root Directory.Build.props
+         and .editorconfig, so every project here inherits the same settings. -->
 
     <Product>Controller Magic</Product>
     <AssemblyTitle>Turn a controller into a mouse, keyboard, and media remote</AssemblyTitle>
@@ -54,6 +31,13 @@
     <Content Include="THIRD-PARTY-NOTICES.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Lets ControllerMagic.Tests exercise internal-only surface (pure logic like
+         ControllerPoller.ComputeHoldRamp, AppSettings' load/migrate path) without widening those
+         members to public just for testability. -->
+    <InternalsVisibleTo Include="ControllerMagic.Tests" />
   </ItemGroup>
 
   <ItemGroup>

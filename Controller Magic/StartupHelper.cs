@@ -12,6 +12,11 @@ namespace ControllerMagic
     // retry once with a UAC prompt (many such policies only block the unelevated path), and if
     // that's declined or still fails we fall back to the Run key instead of leaving the toggle
     // silently non-functional.
+    //
+    // Every schtasks.exe invocation here is async: it's a subprocess spawn plus a wait, and the
+    // elevated variant can block for as long as the user takes to respond to (or ignore) a UAC
+    // prompt - none of that belongs on the UI thread. The registry reads/writes stay synchronous;
+    // they're near-instant local calls, not worth the ceremony.
     internal static class StartupHelper
     {
         private const string TaskName = "ControllerMagic";
@@ -23,33 +28,28 @@ namespace ControllerMagic
         // "already running" dialog for the former.
         private const string StartupArg = " --startup";
 
-        public static bool IsEnabled() =>
-            RunSchtasks("/Query", "/TN", TaskName) == 0 || GetRunKeyValue() != null;
+        public static async Task<bool> IsEnabledAsync(CancellationToken ct = default) =>
+            await RunSchtasksAsync(ct, "/Query", "/TN", TaskName).ConfigureAwait(false) == 0 || GetRunKeyValue() != null;
 
-        public static void SetEnabled(bool enabled)
-        {
-            if (enabled)
-                Enable();
-            else
-                Disable();
-        }
+        public static Task SetEnabledAsync(bool enabled, CancellationToken ct = default) =>
+            enabled ? EnableAsync(ct) : DisableAsync(ct);
 
-        private static void Enable()
+        private static async Task EnableAsync(CancellationToken ct)
         {
             string exe = Application.ExecutablePath;
 
-            if (TryCreateTask(exe, allowElevation: true))
+            if (await TryCreateTaskAsync(exe, allowElevation: true, ct).ConfigureAwait(false))
                 RemoveRunKeyValue();
             else
                 SetRunKeyValue(exe);
         }
 
-        private static void Disable()
+        private static async Task DisableAsync(CancellationToken ct)
         {
-            if (RunSchtasks("/Query", "/TN", TaskName) == 0)
+            if (await RunSchtasksAsync(ct, "/Query", "/TN", TaskName).ConfigureAwait(false) == 0)
             {
-                if (RunSchtasks("/Delete", "/TN", TaskName, "/F") != 0)
-                    RunSchtasksElevated(new[] { "/Delete", "/TN", TaskName, "/F" });
+                if (await RunSchtasksAsync(ct, "/Delete", "/TN", TaskName, "/F").ConfigureAwait(false) != 0)
+                    await RunSchtasksElevatedAsync(new[] { "/Delete", "/TN", TaskName, "/F" }, ct).ConfigureAwait(false);
             }
 
             RemoveRunKeyValue();
@@ -59,12 +59,12 @@ namespace ControllerMagic
         // version. Runs silently at app launch, so it never prompts for elevation - it only
         // removes the Run key once the scheduled task actually took unelevated; on machines that
         // block that, the existing Run key is left alone so startup keeps working.
-        public static void EnsureMigrated()
+        public static async Task EnsureMigratedAsync(CancellationToken ct = default)
         {
             string? stored = GetRunKeyValue();
             if (stored == null) return;
 
-            if (TryCreateTask(ExtractExePath(stored), allowElevation: false))
+            if (await TryCreateTaskAsync(ExtractExePath(stored), allowElevation: false, ct).ConfigureAwait(false))
                 RemoveRunKeyValue();
         }
 
@@ -80,7 +80,7 @@ namespace ControllerMagic
             return value.Trim('"');
         }
 
-        private static bool TryCreateTask(string exe, bool allowElevation)
+        private static async Task<bool> TryCreateTaskAsync(string exe, bool allowElevation, CancellationToken ct)
         {
             string[] createArgs =
             {
@@ -91,17 +91,17 @@ namespace ControllerMagic
                 "/F"
             };
 
-            if (RunSchtasks(createArgs) == 0)
+            if (await RunSchtasksAsync(ct, createArgs).ConfigureAwait(false) == 0)
                 return true;
 
             if (!allowElevation)
             {
-                Debug.WriteLine("[StartupHelper] Unelevated scheduled task creation failed; skipping the elevation prompt during background migration.");
+                AppLog.Default.Warning("StartupHelper: unelevated scheduled task creation failed; skipping the elevation prompt during background migration.");
                 return false;
             }
 
-            Debug.WriteLine("[StartupHelper] Unelevated scheduled task creation failed; retrying with a UAC prompt.");
-            return RunSchtasksElevated(createArgs);
+            AppLog.Default.Warning("StartupHelper: unelevated scheduled task creation failed; retrying with a UAC prompt.");
+            return await RunSchtasksElevatedAsync(createArgs, ct).ConfigureAwait(false);
         }
 
         private static string? GetRunKeyValue()
@@ -113,7 +113,7 @@ namespace ControllerMagic
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[StartupHelper] Failed to read Run key: {ex}");
+                AppLog.Default.Warning("StartupHelper: failed to read Run key", ex);
                 return null;
             }
         }
@@ -127,7 +127,7 @@ namespace ControllerMagic
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[StartupHelper] Failed to write Run key: {ex}");
+                AppLog.Default.Warning("StartupHelper: failed to write Run key", ex);
             }
         }
 
@@ -141,11 +141,11 @@ namespace ControllerMagic
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[StartupHelper] Failed to remove Run key: {ex}");
+                AppLog.Default.Warning("StartupHelper: failed to remove Run key", ex);
             }
         }
 
-        private static int RunSchtasks(params string[] args)
+        private static async Task<int> RunSchtasksAsync(CancellationToken ct, params string[] args)
         {
             var psi = new ProcessStartInfo("schtasks.exe")
             {
@@ -161,12 +161,12 @@ namespace ControllerMagic
             {
                 using var proc = Process.Start(psi);
                 if (proc == null) return -1;
-                proc.WaitForExit();
+                await proc.WaitForExitAsync(ct).ConfigureAwait(false);
                 return proc.ExitCode;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[StartupHelper] schtasks invocation failed: {ex}");
+                AppLog.Default.Warning("StartupHelper: schtasks invocation failed", ex);
                 return -1;
             }
         }
@@ -174,7 +174,7 @@ namespace ControllerMagic
         // Retries an operation with a UAC consent prompt. Some locked-down (Group Policy managed)
         // machines only block *unelevated* task operations; an elevated token can often still
         // succeed. If the user declines the prompt, this just fails closed.
-        private static bool RunSchtasksElevated(string[] args)
+        private static async Task<bool> RunSchtasksElevatedAsync(string[] args, CancellationToken ct)
         {
             var psi = new ProcessStartInfo("schtasks.exe")
             {
@@ -189,17 +189,17 @@ namespace ControllerMagic
             {
                 using var proc = Process.Start(psi);
                 if (proc == null) return false;
-                proc.WaitForExit();
+                await proc.WaitForExitAsync(ct).ConfigureAwait(false);
                 return proc.ExitCode == 0;
             }
             catch (Win32Exception ex) when (ex.NativeErrorCode == 1223) // ERROR_CANCELLED
             {
-                Debug.WriteLine("[StartupHelper] User declined the elevation prompt.");
+                AppLog.Default.Warning("StartupHelper: user declined the elevation prompt.");
                 return false;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[StartupHelper] Elevated schtasks invocation failed: {ex}");
+                AppLog.Default.Warning("StartupHelper: elevated schtasks invocation failed", ex);
                 return false;
             }
         }

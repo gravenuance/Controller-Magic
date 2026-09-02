@@ -22,8 +22,6 @@ namespace ControllerMagic
 
         public TrayApplicationContext()
         {
-            StartupHelper.EnsureMigrated();
-
             _trayIcon = new NotifyIcon
             {
                 Icon = Theme.AppIcon,
@@ -49,28 +47,34 @@ namespace ControllerMagic
             _trayIcon.ContextMenuStrip = menu;
             _trayIcon.DoubleClick += OnSettingsClick;
 
-            EnsureStartupConfigured();
-
             _controllerPoller = new ControllerPoller();
             _controllerPoller.KeyboardModeChanged += OnKeyboardModeChanged;
             _controllerPoller.Start();
 
             _overlay = new KeyboardOverlayForm(_controllerPoller);
             _overlay.Show();
+
+            // Startup-task housekeeping (migrating a legacy Run-key install, defaulting startup to
+            // on for a first-ever run) spawns schtasks.exe and can briefly block on a UAC prompt -
+            // run it in the background instead of delaying the tray icon's appearance on it.
+            _ = InitializeStartupAsync();
         }
 
-        // Runs once, ever, the first time the app starts: if startup has never been configured,
-        // default it to on - no prompt. StartupHelper.SetEnabled already handles the unelevated
-        // task attempt, the UAC-elevated retry if that's denied, and the Run-key fallback if
-        // elevation is declined, so this can still surface a UAC prompt on locked-down machines;
-        // it just isn't an app-level dialog asking permission first.
-        private static void EnsureStartupConfigured()
+        // Runs EnsureMigratedAsync every launch (a no-op once there's no legacy Run-key value left
+        // to migrate), then - once, ever, the first time the app starts - defaults startup to on,
+        // no prompt. SetEnabledAsync already handles the unelevated task attempt, the UAC-elevated
+        // retry if that's denied, and the Run-key fallback if elevation is declined, so this can
+        // still surface a UAC prompt on locked-down machines; it just isn't an app-level dialog
+        // asking permission first.
+        private static async Task InitializeStartupAsync()
         {
+            await StartupHelper.EnsureMigratedAsync().ConfigureAwait(false);
+
             if (AppSettings.Instance.HasInitializedStartup)
                 return;
 
             AppSettings.Instance.HasInitializedStartup = true;
-            StartupHelper.SetEnabled(true);
+            await StartupHelper.SetEnabledAsync(true).ConfigureAwait(false);
             AppSettings.Instance.RunAtStartup = true;
             AppSettings.Instance.Save();
         }
@@ -101,7 +105,7 @@ namespace ControllerMagic
 
         private void OnKeyboardModeChanged(bool enabled)
         {
-            Debug.WriteLine($"OnKeyboardModeChanged enabled={enabled}");
+            AppLog.Default.Info($"Keyboard mode {(enabled ? "enabled" : "disabled")}");
 
             if (_overlay.InvokeRequired)
             {
@@ -115,8 +119,6 @@ namespace ControllerMagic
 
         private void HandleKeyboardModeChanged(bool enabled)
         {
-            Debug.WriteLine($"HandleKeyboardModeChanged enabled={enabled}");
-
             if (enabled)
             {
                 PositionOverlayOnActiveMonitor(_overlay);
@@ -150,8 +152,9 @@ namespace ControllerMagic
             {
                 Process.Start(exe);
             }
-            catch
+            catch (Exception ex)
             {
+                AppLog.Default.Warning($"Failed to relaunch {exe} for restart", ex);
             }
 
             ExitThread();
