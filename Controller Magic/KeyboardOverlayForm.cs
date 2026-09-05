@@ -1,7 +1,4 @@
-﻿using System.Diagnostics;
-using System.Runtime.InteropServices;
-
-namespace ControllerMagic
+﻿namespace ControllerMagic
 {
     internal sealed partial class KeyboardOverlayForm : Form
     {
@@ -44,7 +41,16 @@ namespace ControllerMagic
 
             DoubleBuffered = true;
 
-            Load += (_, __) => MakeClickThrough();
+            // A brand-new top-level window gets an opaque white placeholder surface from DWM for
+            // its first composited frame or two, before this form's own TransparencyKey-based
+            // colour-key masking takes over - independent of WS_EX_LAYERED already being set at
+            // creation (confirmed by screen-capturing the actual flash: a plain white square,
+            // sized and positioned exactly like this form, ~250ms into startup). Opacity 0 keeps
+            // the whole window - placeholder included - fully invisible through that window;
+            // Shown+BeginInvoke defers the reveal to the next message-loop pass, by which point
+            // DWM's placeholder frame and this form's own layered setup have both settled.
+            Opacity = 0;
+            Shown += (_, __) => BeginInvoke(new Action(() => Opacity = 1));
 
             // Only repaint while keyboard mode is active (for the live sector highlight),
             // plus one final tick on the transition out to clear the last frame.
@@ -59,12 +65,16 @@ namespace ControllerMagic
             _timer.Start();
         }
 
-        // Make the form click-through so it does not steal mouse input
-        private void MakeClickThrough()
+        // Win32 interop for click-through - independent of the layered/opacity machinery above,
+        // so baking it into CreateParams from the start doesn't risk the same conflict.
+        protected override CreateParams CreateParams
         {
-            int exStyle = (int)GetWindowLong(Handle, GWL_EXSTYLE);
-            exStyle |= WS_EX_TRANSPARENT | WS_EX_LAYERED;
-            SetWindowLong(Handle, GWL_EXSTYLE, (IntPtr)exStyle);
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_TRANSPARENT;
+                return cp;
+            }
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -139,14 +149,6 @@ namespace ControllerMagic
         }
 
         // Win32 interop for click-through
-        private const int GWL_EXSTYLE = -20;
         private const int WS_EX_TRANSPARENT = 0x00000020;
-        private const int WS_EX_LAYERED = 0x00080000;
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetWindowLong(IntPtr hWnd, int nIndex);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr SetWindowLong(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
     }
 }

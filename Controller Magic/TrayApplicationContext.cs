@@ -52,6 +52,11 @@ namespace ControllerMagic
             _controllerPoller.Start();
 
             _overlay = new KeyboardOverlayForm(_controllerPoller);
+            // Defense in depth alongside KeyboardOverlayForm's own CreateParams fix: even with
+            // this window fully click-through and colour-key transparent from frame one, there's
+            // no reason to leave it sitting at its default (0,0) location - the top-left corner of
+            // the primary monitor - before keyboard mode ever repositions it.
+            PositionOverlayOnActiveMonitor(_overlay);
             _overlay.Show();
 
             // Startup-task housekeeping (migrating a legacy Run-key install, defaulting startup to
