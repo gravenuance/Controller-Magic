@@ -8,6 +8,10 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Changed
+- Upgraded `xunit.v3` to 4.0.0 and `Microsoft.Testing.Extensions.CodeCoverage` to 18.11.2, now that
+  both resolve onto the same `Microsoft.Testing.Platform` 2.x line.
+
 ## [1.4.0] - 2026-09-02
 
 ### Added
