@@ -164,25 +164,34 @@ namespace ControllerMagic
 
         private static readonly JsonSerializerOptions SaveOptions = new() { WriteIndented = true };
 
+        // Guards the temp-file-then-move sequence below: Save() is called both from a background
+        // continuation (TrayApplicationContext's startup init) and from the UI-thread save-debounce
+        // timer (SettingsForm), and without this lock two concurrent callers can race on the same
+        // fixed temp path - one's File.Move then fails because the other already moved it away.
+        private static readonly Lock SaveLock = new();
+
         public void Save()
         {
-            try
+            lock (SaveLock)
             {
-                Directory.CreateDirectory(SettingsDirectory);
-                SchemaVersion = CurrentSchemaVersion;
-                string json = JsonSerializer.Serialize(this, SaveOptions);
+                try
+                {
+                    Directory.CreateDirectory(SettingsDirectory);
+                    SchemaVersion = CurrentSchemaVersion;
+                    string json = JsonSerializer.Serialize(this, SaveOptions);
 
-                // Atomic: write to a temp file in the same directory, then move it over the real
-                // path. A same-volume File.Move is atomic at the filesystem level, so a crash or
-                // power loss mid-write can never leave settings.json truncated or corrupt - a
-                // reader only ever sees the old file intact or the fully-written new one.
-                string tempPath = SettingsPath + ".tmp";
-                File.WriteAllText(tempPath, json);
-                File.Move(tempPath, SettingsPath, overwrite: true);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Default.Warning($"AppSettings: failed to save {SettingsPath}", ex);
+                    // Atomic: write to a temp file in the same directory, then move it over the real
+                    // path. A same-volume File.Move is atomic at the filesystem level, so a crash or
+                    // power loss mid-write can never leave settings.json truncated or corrupt - a
+                    // reader only ever sees the old file intact or the fully-written new one.
+                    string tempPath = SettingsPath + ".tmp";
+                    File.WriteAllText(tempPath, json);
+                    File.Move(tempPath, SettingsPath, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Default.Warning($"AppSettings: failed to save {SettingsPath}", ex);
+                }
             }
         }
     }

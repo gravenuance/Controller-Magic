@@ -237,9 +237,11 @@ namespace ControllerMagic
         private long _lastScrollTick;
         private long _lastHorizontalScrollTick;
 
-        private bool _keyboardMode;
-        private int _keyboardLayer;
-        private int _currentSector;
+        // Written on the poll thread, read from the UI thread (KeyboardOverlayForm's paint timer).
+        // Same cross-thread-visibility reasoning as IsControllerConnected below, so volatile here too.
+        private volatile bool _keyboardMode;
+        private volatile int _keyboardLayer;
+        private volatile int _currentSector;
 
         private bool _ltWasDown;
         private bool _rtWasDown;
@@ -262,7 +264,7 @@ namespace ControllerMagic
         private static float StickAccelPower => AppSettings.Instance.StickAccelPower;
         private static float StickRampSeconds => AppSettings.Instance.StickRampSeconds;
 
-        private int _slotIndex;
+        private volatile int _slotIndex;
         public int SlotIndex => _slotIndex;
 
         private PadButtons _prevButtons;

@@ -12,6 +12,13 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - Upgraded `xunit.v3` to 4.0.0 and `Microsoft.Testing.Extensions.CodeCoverage` to 18.11.2, now that
   both resolve onto the same `Microsoft.Testing.Platform` 2.x line.
 
+### Fixed
+- `AppSettings.Save()` could race with itself when a background continuation and the Settings save
+  debounce timer wrote `settings.json` at the same time, occasionally dropping an edit; saves are
+  now serialized.
+- `ControllerPoller`'s keyboard-mode/layer/sector/slot fields, read from the UI thread while written
+  on the poll thread, are now `volatile` like the rest of the poller's cross-thread state.
+
 ## [1.4.0] - 2026-09-02
 
 ### Added
