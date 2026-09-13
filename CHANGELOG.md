@@ -8,6 +8,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-13
+
 ### Added
 - "Suppress Guide button & focus jumps" setting: hides the physical controller from the rest of
   the system (via HidHide) and re-emits it through a virtual controller (via ViGEmBus) so the
