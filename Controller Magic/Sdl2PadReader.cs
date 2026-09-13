@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using SDL2;
 
 namespace ControllerMagic;
@@ -18,6 +19,18 @@ internal sealed class Sdl2PadReader : IDisposable
     private readonly bool _initialized;
     private IntPtr _controller;
     private int _controllerInstanceId = -1;
+
+    // The pinned ppy.SDL2-CS binding doesn't wrap SDL_JoystickPath (added to SDL2 after this
+    // binding's SDL_Joystick* surface was generated), even though the bundled native SDL2.dll
+    // exports it - declared directly here rather than hand-rolling raw HID/SetupAPI enumeration,
+    // which this codebase has no precedent for at all.
+    [DllImport("SDL2.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr SDL_JoystickPath(IntPtr joystick);
+
+    // Identifies the currently-open physical controller for HidHide, computed once when opened
+    // (not per-tick) since it never changes for the lifetime of one connection. Null whenever no
+    // controller is open, or SDL couldn't report a path for this specific device.
+    public PhysicalDeviceIdentity? CurrentDeviceIdentity { get; private set; }
 
     public Sdl2PadReader()
     {
@@ -74,9 +87,26 @@ internal sealed class Sdl2PadReader : IDisposable
                 continue;
 
             _controller = handle;
-            _controllerInstanceId = SDL.SDL_JoystickInstanceID(SDL.SDL_GameControllerGetJoystick(handle));
+            IntPtr joystick = SDL.SDL_GameControllerGetJoystick(handle);
+            _controllerInstanceId = SDL.SDL_JoystickInstanceID(joystick);
+            CurrentDeviceIdentity = TryGetDeviceIdentity(handle, joystick);
             return;
         }
+    }
+
+    // SDL_JoystickPath only resolves for a device SDL has actually opened as a game controller
+    // (i.e. one present in gamecontrollerdb.txt) - an unmapped device leaves this null, which
+    // callers must treat as "can't be hidden" rather than guessing at an identity.
+    private static PhysicalDeviceIdentity? TryGetDeviceIdentity(IntPtr controller, IntPtr joystick)
+    {
+        IntPtr pathPtr = SDL_JoystickPath(joystick);
+        string? path = pathPtr == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(pathPtr);
+        if (string.IsNullOrEmpty(path))
+            return null;
+
+        ushort vendor = SDL.SDL_GameControllerGetVendor(controller);
+        ushort product = SDL.SDL_GameControllerGetProduct(controller);
+        return new PhysicalDeviceIdentity(path, vendor, product);
     }
 
     private void CloseController()
@@ -86,6 +116,7 @@ internal sealed class Sdl2PadReader : IDisposable
 
         _controller = IntPtr.Zero;
         _controllerInstanceId = -1;
+        CurrentDeviceIdentity = null;
     }
 
     private static PadState Read(IntPtr controller)

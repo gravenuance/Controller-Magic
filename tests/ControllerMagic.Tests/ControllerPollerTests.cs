@@ -94,7 +94,7 @@ public class ControllerPollerTests
     [Fact]
     public void DebounceButtons_FirstReading_IsNotTrustedYet()
     {
-        var poller = new ControllerPoller();
+        using var poller = new ControllerPoller();
 
         PadButtons result = poller.DebounceButtons(PadButtons.A);
 
@@ -104,7 +104,7 @@ public class ControllerPollerTests
     [Fact]
     public void DebounceButtons_TwoConsecutiveIdenticalReadings_BecomesStable()
     {
-        var poller = new ControllerPoller();
+        using var poller = new ControllerPoller();
 
         poller.DebounceButtons(PadButtons.A);
         PadButtons result = poller.DebounceButtons(PadButtons.A);
@@ -115,7 +115,7 @@ public class ControllerPollerTests
     [Fact]
     public void DebounceButtons_SingleTickFlicker_DoesNotDisturbAnAlreadyStableValue()
     {
-        var poller = new ControllerPoller();
+        using var poller = new ControllerPoller();
         poller.DebounceButtons(PadButtons.A);
         poller.DebounceButtons(PadButtons.A); // now stable at A
 
@@ -131,7 +131,7 @@ public class ControllerPollerTests
     [Fact]
     public void DebounceButtons_SustainedChange_EventuallyBecomesStable()
     {
-        var poller = new ControllerPoller();
+        using var poller = new ControllerPoller();
         poller.DebounceButtons(PadButtons.A);
         poller.DebounceButtons(PadButtons.A); // stable at A
 

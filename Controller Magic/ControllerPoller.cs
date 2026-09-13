@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace ControllerMagic
 {
-    internal sealed class ControllerPoller
+    internal sealed class ControllerPoller : IDisposable
     {
         internal struct KeyEntry
         {
@@ -231,6 +231,13 @@ namespace ControllerMagic
         private Thread? _thread;
         private volatile bool _running;
 
+        // Additive to the read path below, not a replacement for it: still fed the same PadState
+        // ProcessSticks/ProcessButtons/ProcessKeyboardMode already consume, and only submits it to
+        // a virtual controller as well when AppSettings.Instance.UseHidHide is on and the drivers
+        // are ready. See GamepadPassthroughController's own comment for why the Guide button can
+        // never reach that virtual pad.
+        private readonly GamepadPassthroughController _passthrough = new();
+
         private const int SlowScrollIntervalMs = 200;
         private const int FastScrollIntervalMs = 20;
 
@@ -303,6 +310,17 @@ namespace ControllerMagic
             _thread?.Join();
             _ = timeEndPeriod(1);
         }
+
+        // Loop()'s finally block already disconnects/uncloaks via _passthrough.Shutdown() by the
+        // time Stop() returns - this only releases the underlying ViGEmClient object itself.
+        public void Dispose() => _passthrough.Dispose();
+
+        // For Settings' "Suppress Guide button" toggle: whether it should currently be
+        // enabled/checked, and a way to tell the poller a fresh install just succeeded.
+        public Task<DriverStatus> DetectDriverStatusAsync(CancellationToken ct = default) =>
+            _passthrough.DetectDriverStatusAsync(ct);
+
+        public Task RefreshDriverStatusAsync() => Task.Run(_passthrough.RefreshDriverStatus);
 
         internal static class FullscreenHelper
         {
@@ -456,38 +474,54 @@ namespace ControllerMagic
             // consistently from a single thread for its whole lifetime.
             using var sdlPadReader = new Sdl2PadReader();
 
-            while (_running)
+            try
             {
-                if (FullscreenHelper.IsBlockedFullscreen())
+                while (_running)
                 {
-                    Thread.Sleep(100);
-                    continue;
+                    bool blockedFullscreen = FullscreenHelper.IsBlockedFullscreen();
+                    _passthrough.SetFullscreenSuspended(blockedFullscreen);
+
+                    if (blockedFullscreen)
+                    {
+                        Thread.Sleep(100);
+                        continue;
+                    }
+
+                    // Keeps SDL's device state (event queue drained, a newly available controller
+                    // opened) current every tick, independent of which source ends up supplying the
+                    // frame below - see the comment on PumpEvents() for why that independence matters.
+                    sdlPadReader.PumpEvents();
+
+                    bool gotXInput = XInputPadReader.TryReadAny(out var pad);
+                    bool gotPad = gotXInput || sdlPadReader.TryGetLatest(out pad);
+
+                    IsControllerConnected = gotPad;
+                    UpdateStatusText(gotXInput, gotPad);
+
+                    if (gotPad)
+                    {
+                        pad.Buttons = DebounceButtons(pad.Buttons);
+
+                        if (_keyboardMode)
+                            ProcessKeyboardMode(pad);
+                        else
+                            ProcessSticks(pad);
+
+                        ProcessButtons(pad);
+                    }
+
+                    _passthrough.Tick(pad, gotPad, sdlPadReader.CurrentDeviceIdentity);
+
+                    Thread.Sleep(8);
                 }
-
-                // Keeps SDL's device state (event queue drained, a newly available controller
-                // opened) current every tick, independent of which source ends up supplying the
-                // frame below - see the comment on PumpEvents() for why that independence matters.
-                sdlPadReader.PumpEvents();
-
-                bool gotXInput = XInputPadReader.TryReadAny(out var pad);
-                bool gotPad = gotXInput || sdlPadReader.TryGetLatest(out pad);
-
-                IsControllerConnected = gotPad;
-                UpdateStatusText(gotXInput, gotPad);
-
-                if (gotPad)
-                {
-                    pad.Buttons = DebounceButtons(pad.Buttons);
-
-                    if (_keyboardMode)
-                        ProcessKeyboardMode(pad);
-                    else
-                        ProcessSticks(pad);
-
-                    ProcessButtons(pad);
-                }
-
-                Thread.Sleep(8);
+            }
+            finally
+            {
+                // Covers both the ordinary clean-exit path (Stop() joins this thread, so this runs
+                // before Stop() returns) and a same-process crash on this thread - see
+                // GamepadPassthroughController.Shutdown for why a crash/force-kill that skips this
+                // entirely is still recovered from, on the next launch.
+                _passthrough.Shutdown();
             }
         }
 

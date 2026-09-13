@@ -28,6 +28,11 @@ namespace ControllerMagic
         // set up once - after that, whatever the user has it set to (on or off) is left alone.
         public bool HasInitializedStartup { get; set; }
 
+        // Hides the physical controller (via HidHide) and re-emits it through a virtual pad (via
+        // ViGEmBus) so the Guide/Home/Steam button can never reach Xbox Game Bar or Steam's Big
+        // Picture mode - neither exposes a config flag for that, so this is the only reliable fix.
+        public bool UseHidHide { get; set; }
+
         // Exponent applied to the normalized stick magnitude (0..1) before scaling cursor speed.
         // >1 gives a gradual ramp - slow/precise near center, faster toward full deflection.
         // <1 does the opposite (snaps to near-max speed on almost any push), which is why the

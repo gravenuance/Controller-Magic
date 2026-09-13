@@ -55,6 +55,22 @@ namespace ControllerMagic
         protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
         protected override bool IsInputKey(Keys keyData) => keyData is Keys.Space or Keys.Enter || base.IsInputKey(keyData);
 
+        // UserPaint controls don't repaint themselves on an Enabled change by default, and a
+        // disabled control showing a hand cursor reads as a bug.
+        protected override void OnEnabledChanged(EventArgs e)
+        {
+            Cursor = Enabled ? Cursors.Hand : Cursors.Default;
+            Invalidate();
+            base.OnEnabledChanged(e);
+        }
+
+        private static Color Muted(Color c) => Blend(c, Theme.Muted, 0.6f);
+
+        private static Color Blend(Color a, Color b, float t) => Color.FromArgb(
+            (int)(a.R + ((b.R - a.R) * t)),
+            (int)(a.G + ((b.G - a.G) * t)),
+            (int)(a.B + ((b.B - a.B) * t)));
+
         // AccessibleName is set per-instance by whoever places this switch; this reports the
         // on/off state through it, the same contract a native CheckBox gives a screen reader.
         protected override AccessibleObject CreateAccessibilityInstance() => new ToggleAccessibleObject(this);
@@ -76,14 +92,24 @@ namespace ControllerMagic
             var rect = new Rectangle(0, 0, Width - 1, Height - 1);
             using var path = RoundedRect(rect, Height / 2f);
 
-            using (var fill = new SolidBrush(Checked ? TrackOnColor : TrackOffColor))
+            Color trackColor = Checked ? TrackOnColor : TrackOffColor;
+            Color borderColor = Checked ? TrackOnColor : BorderColor;
+            Color knobColor = KnobColor;
+            if (!Enabled)
+            {
+                trackColor = Muted(trackColor);
+                borderColor = Muted(borderColor);
+                knobColor = Muted(knobColor);
+            }
+
+            using (var fill = new SolidBrush(trackColor))
                 g.FillPath(fill, path);
-            using (var pen = new Pen(Checked ? TrackOnColor : BorderColor))
+            using (var pen = new Pen(borderColor))
                 g.DrawPath(pen, path);
 
             float knobD = Height - 6;
             float knobX = Checked ? Width - knobD - 3 : 3;
-            using (var knobBrush = new SolidBrush(KnobColor))
+            using (var knobBrush = new SolidBrush(knobColor))
                 g.FillEllipse(knobBrush, knobX, 3, knobD, knobD);
 
             if (Focused)

@@ -174,6 +174,7 @@ namespace ControllerMagic
         {
             _controllerPoller.KeyboardModeChanged -= OnKeyboardModeChanged;
             _controllerPoller.Stop();
+            _controllerPoller.Dispose();
 
             _overlay?.Close();
 

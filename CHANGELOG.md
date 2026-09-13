@@ -8,6 +8,16 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Added
+- "Suppress Guide button & focus jumps" setting: hides the physical controller from the rest of
+  the system (via HidHide) and re-emits it through a virtual controller (via ViGEmBus) so the
+  Guide/Home/Steam button can no longer open Xbox Game Bar or Steam's Big Picture mode, and the
+  left stick/D-pad can no longer drive Windows' built-in gamepad UI focus navigation while
+  they're being used for mouse/keyboard emulation instead. Off by default; downloads and
+  silently installs the two required drivers behind a single admin prompt the first time it's
+  turned on, and automatically stands down while a non-excluded app is fullscreen or if the app
+  doesn't exit cleanly.
+
 ## [1.4.1] - 2026-09-12
 
 ### Changed

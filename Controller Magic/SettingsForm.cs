@@ -110,6 +110,10 @@ namespace ControllerMagic
             AddStartupToggle();
             EndCard();
 
+            BeginCard("Guide button");
+            AddHidHideToggle();
+            EndCard();
+
             BeginCard("Mouse movement");
             AddSlider(
                 name: "Deadzone",
@@ -469,6 +473,133 @@ namespace ControllerMagic
             {
                 if (!toggle.IsDisposed)
                     toggle.Checked = actuallyEnabled;
+            }
+
+            if (toggle.InvokeRequired)
+                toggle.BeginInvoke((Action)Apply);
+            else
+                Apply();
+        }
+
+        private const string HidHideCaveatText = "May be blocked by some anti-cheat (BattlEye, EasyAntiCheat).";
+        private const string HidHideNeedsDriversText = "Needs drivers - connect to the internet to install.";
+
+        private void AddHidHideToggle()
+        {
+            if (_card == null) throw new InvalidOperationException("AddHidHideToggle called outside a card");
+
+            var title = new Label
+            {
+                Text = "Suppress Guide button & focus jumps",
+                AutoSize = true,
+                Location = new Point(CardPadding, _cardY + 3),
+                Font = Theme.UiFontBold,
+                ForeColor = Theme.Ink,
+            };
+
+            // Starts disabled/unchecked-looking until the background driver probe below decides
+            // whether it can be turned on at all - unlike the startup toggle, there's no cheap
+            // last-known value to show immediately (installing a driver isn't a fire-and-forget
+            // background correction the way a scheduled task toggle is).
+            var toggle = new ToggleSwitch
+            {
+                Checked = AppSettings.Instance.UseHidHide,
+                Enabled = false,
+                TabIndex = _nextTabIndex++,
+                AccessibleName = "Suppress Guide button and stick/D-pad focus jumps",
+            };
+            toggle.Location = new Point(_card.Width - CardPadding - toggle.Width, _cardY);
+
+            _card.Controls.Add(title);
+            _card.Controls.Add(toggle);
+            _cardY += toggle.Height + 2;
+
+            var status = new Label
+            {
+                Text = "Checking...",
+                AutoSize = true,
+                Location = new Point(CardPadding, _cardY),
+                Font = Theme.CaptionFont,
+                ForeColor = Theme.Muted,
+                MaximumSize = new Size(_card.Width - CardPadding * 2, 0),
+            };
+            _card.Controls.Add(status);
+            _cardY += 18;
+
+            // Detached while handling one change and reattached afterward: the failure path below
+            // reverts toggle.Checked itself, which would otherwise re-enter this same handler
+            // (ToggleSwitch.CheckedChanged fires on any actual value change) and immediately
+            // overwrite the failure message this handler is about to show.
+            EventHandler? handler = null;
+            handler = async (_, __) =>
+            {
+                toggle.CheckedChanged -= handler;
+                try
+                {
+                    await OnHidHideToggleChangedAsync(toggle, status).ConfigureAwait(true);
+                }
+                finally
+                {
+                    toggle.CheckedChanged += handler;
+                }
+            };
+            toggle.CheckedChanged += handler;
+
+            _ = ReconcileHidHideToggleAsync(toggle, status);
+        }
+
+        private async Task OnHidHideToggleChangedAsync(ToggleSwitch toggle, Label status)
+        {
+            if (!toggle.Checked)
+            {
+                AppSettings.Instance.UseHidHide = false;
+                RequestSave();
+                status.Text = HidHideCaveatText;
+                return;
+            }
+
+            var driverStatus = await _poller.DetectDriverStatusAsync().ConfigureAwait(true);
+            if (!driverStatus.HidHideInstalled || !driverStatus.VigemInstalled)
+            {
+                var progress = new Progress<string>(text => status.Text = text);
+                var result = await DriverInstaller.InstallAsync(progress, CancellationToken.None).ConfigureAwait(true);
+
+                if (!result.Succeeded)
+                {
+                    toggle.Checked = false;
+                    status.Text = result.Outcome switch
+                    {
+                        InstallOutcome.ElevationDeclined => "Elevation was cancelled.",
+                        InstallOutcome.NetworkError => "No network - couldn't download drivers.",
+                        InstallOutcome.SignatureVerificationFailed => "Driver signature check failed.",
+                        _ => "Driver install failed - see log.",
+                    };
+                    return;
+                }
+
+                await _poller.RefreshDriverStatusAsync().ConfigureAwait(true);
+            }
+
+            AppSettings.Instance.UseHidHide = true;
+            RequestSave();
+            status.Text = HidHideCaveatText;
+        }
+
+        private async Task ReconcileHidHideToggleAsync(ToggleSwitch toggle, Label status)
+        {
+            var driverStatus = await _poller.DetectDriverStatusAsync().ConfigureAwait(false);
+            bool enabled = DriverDependency.ShouldToggleBeEnabled(driverStatus);
+
+            if (toggle.IsDisposed)
+                return;
+
+            void Apply()
+            {
+                if (toggle.IsDisposed || status.IsDisposed)
+                    return;
+
+                toggle.Enabled = enabled;
+                status.Text = enabled ? HidHideCaveatText : HidHideNeedsDriversText;
             }
 
             if (toggle.InvokeRequired)

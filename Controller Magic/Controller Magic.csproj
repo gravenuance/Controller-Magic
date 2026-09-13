@@ -42,8 +42,17 @@
 
   <ItemGroup>
     <PackageReference Include="Vortice.XInput" Version="3.8.3" />
-    <PackageReference Include="ppy.SDL2-CS" Version="1.0.741-alpha" />
+    <!-- ExcludeAssets=contentFiles: this package's only content file is a Mono-style dllmap
+         app.config for resolving "SDL2" to libSDL2.so/.dylib on non-Windows - dead weight for a
+         Windows-only (net10.0-windows) app, where the OS's own native-library loader already
+         resolves a bare "SDL2" DllImport name to SDL2.dll without it. Doesn't affect the actual
+         managed/native assets this package provides (compile/runtime/native), only this one
+         copied-to-output config file. -->
+    <PackageReference Include="ppy.SDL2-CS" Version="1.0.741-alpha" ExcludeAssets="contentFiles" />
     <PackageReference Include="sdl2.nuget" Version="2.32.8" />
+    <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
+    <PackageReference Include="Nefarius.Drivers.HidHide" Version="3.4.0" />
+    <PackageReference Include="Nefarius.Utilities.DeviceManagement" Version="5.2.0" />
   </ItemGroup>
 
   <ItemGroup>
