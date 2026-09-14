@@ -8,6 +8,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-14
+
 ### Changed
 - Renamed the "Suppress Guide button & focus jumps" setting to "Use HidHide" and removed its
   in-app anti-cheat caveat label (still noted in the README).

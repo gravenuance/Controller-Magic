@@ -18,9 +18,9 @@
     <Product>Controller Magic</Product>
     <AssemblyTitle>Turn a controller into a mouse, keyboard, and media remote</AssemblyTitle>
     <Description>Turn a controller into a mouse, keyboard, and media remote.</Description>
-    <Version>1.5.0</Version>
-    <FileVersion>1.5.0.0</FileVersion>
-    <AssemblyVersion>1.5.0.0</AssemblyVersion>
+    <Version>1.6.0</Version>
+    <FileVersion>1.6.0.0</FileVersion>
+    <AssemblyVersion>1.6.0.0</AssemblyVersion>
     <Copyright>Copyright © $([System.DateTime]::Now.Year)</Copyright>
     <NeutralLanguage>en</NeutralLanguage>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
