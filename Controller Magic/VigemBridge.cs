@@ -2,6 +2,7 @@ using Nefarius.ViGEm.Client;
 using Nefarius.ViGEm.Client.Exceptions;
 using Nefarius.ViGEm.Client.Targets;
 using Nefarius.ViGEm.Client.Targets.Xbox360;
+using Nefarius.ViGEm.Client.Targets.Xbox360.Exceptions;
 
 namespace ControllerMagic;
 
@@ -14,6 +15,32 @@ internal sealed class VigemBridge : IDisposable
     private IXbox360Controller? _controller;
 
     public bool IsConnected => _controller != null;
+
+    // The XInput slot ViGEmBus assigned this virtual pad to, once connected - null when not
+    // connected, or when connected but ViGEmBus hasn't reported the slot back yet (confirmed from
+    // ViGEm.NET's own source: IXbox360Controller.UserIndex's getter throws
+    // Xbox360UserIndexNotReportedException until that report arrives - it's set inside the same
+    // feedback-notification callback used for rumble/LED state, not synchronously by Connect()).
+    // This is queried every poll tick, so treating "not yet known" as an exception to catch here -
+    // rather than letting it escape unguarded - is not optional.
+    public int? UserIndex
+    {
+        get
+        {
+            var controller = _controller;
+            if (controller == null)
+                return null;
+
+            try
+            {
+                return controller.UserIndex;
+            }
+            catch (Xbox360UserIndexNotReportedException)
+            {
+                return null;
+            }
+        }
+    }
 
     public bool TryConnect()
     {

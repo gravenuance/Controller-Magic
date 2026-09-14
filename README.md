@@ -21,12 +21,12 @@ remote outside of fullscreen games — a background tray app, not a window you k
   etc.) or Edge, the D-pad becomes arrow keys, the shoulder buttons skip to the next/previous
   episode, and X presses "Skip Intro".
 - **Starts with Windows** — on by default, toggleable from Settings.
-- **Suppress Guide button & focus jumps** (optional, off by default) — stops the Guide/Home/Steam
-  button from opening Xbox Game Bar or Steam's Big Picture mode, so it's free to be used for
-  something else, and stops the left stick/D-pad from also driving Windows' built-in gamepad UI
-  focus navigation (which otherwise fights with using the stick as a mouse). Needs two one-time
-  driver downloads (HidHide + ViGEmBus, fetched and installed automatically behind a single admin
-  prompt the first time it's turned on) and may be blocked by some anti-cheat systems (BattlEye,
+- **Use HidHide** (optional, off by default) — stops the Guide/Home/Steam button from opening
+  Xbox Game Bar or Steam's Big Picture mode, so it's free to be used for something else, and
+  stops the left stick/D-pad from also driving Windows' built-in gamepad UI focus navigation
+  (which otherwise fights with using the stick as a mouse). Needs two one-time driver downloads
+  (HidHide + ViGEmBus, fetched and installed automatically behind a single admin prompt the
+  first time it's turned on) and may be blocked by some anti-cheat systems (BattlEye,
   EasyAntiCheat) while it's active.
 - **Right-click (or double-click) the tray icon** for Settings, Restart, and Exit.
 

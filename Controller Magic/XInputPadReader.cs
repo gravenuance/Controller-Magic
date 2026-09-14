@@ -18,14 +18,21 @@ internal static class XInputPadReader
     // that returned true. Exists so the UI can show which XInput slot the controller claimed.
     public static int LastSlot => _lastSlot;
 
-    public static bool TryReadAny(out PadState pad)
+    // excludeSlot is the XInput user index a ViGEm virtual pad this same process just created
+    // landed on, if any. XInput's public API exposes no device identity at all - just a slot
+    // number - so without this, a virtual Xbox 360 controller this app creates for itself is
+    // indistinguishable from a real one, and slot-scanning can end up reading back its own
+    // (deliberately neutered) output as if it were fresh input instead of the real controller.
+    public static bool TryReadAny(out PadState pad, int? excludeSlot = null)
     {
-        if (TryRead(_lastSlot, out pad))
+        pad = default;
+
+        if (_lastSlot != excludeSlot && TryRead(_lastSlot, out pad))
             return true;
 
         for (int i = 0; i < 4; i++)
         {
-            if (i == _lastSlot)
+            if (i == _lastSlot || i == excludeSlot)
                 continue;
 
             if (TryRead(i, out pad))

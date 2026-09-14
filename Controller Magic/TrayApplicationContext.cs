@@ -19,6 +19,7 @@ namespace ControllerMagic
         private readonly Bitmap _settingsIcon;
         private readonly Bitmap _restartIcon;
         private readonly Bitmap _exitIcon;
+        private readonly ResourceUsageMonitor _resourceMonitor;
 
         public TrayApplicationContext()
         {
@@ -58,6 +59,8 @@ namespace ControllerMagic
             // the primary monitor - before keyboard mode ever repositions it.
             PositionOverlayOnActiveMonitor(_overlay);
             _overlay.Show();
+
+            _resourceMonitor = new ResourceUsageMonitor(TimeSpan.FromMinutes(10));
 
             // Startup-task housekeeping (migrating a legacy Run-key install, defaulting startup to
             // on for a first-ever run) spawns schtasks.exe and can briefly block on a UAC prompt -
@@ -145,8 +148,16 @@ namespace ControllerMagic
 
         private void OnSettingsClick(object? sender, EventArgs e)
         {
+            // Diagnostic pair for the same handle-exhaustion investigation as
+            // GamepadPassthroughController.ApplyTransition - if this dialog itself is the source,
+            // repeated open/close cycles should show it. Note: if a handler thrown inside
+            // ShowDialog() is caught by WinForms' own message loop (Application.ThreadException)
+            // rather than propagating out, ShowDialog() never returns and the "after" snapshot
+            // for that specific occurrence won't appear - that gap is itself a useful signal.
+            ResourceUsageMonitor.LogSnapshot("before-settings-open");
             using var form = new SettingsForm(_controllerPoller);
             form.ShowDialog();
+            ResourceUsageMonitor.LogSnapshot("after-settings-close");
         }
 
         private void OnRestartClick(object? sender, EventArgs e)
@@ -176,6 +187,8 @@ namespace ControllerMagic
             _controllerPoller.Stop();
             _controllerPoller.Dispose();
 
+            _resourceMonitor.Dispose();
+
             _overlay?.Close();
 
             _trayIcon.Visible = false;
@@ -198,6 +211,7 @@ namespace ControllerMagic
                 _settingsIcon.Dispose();
                 _restartIcon.Dispose();
                 _exitIcon.Dispose();
+                _resourceMonitor.Dispose();
             }
             base.Dispose(disposing);
         }

@@ -53,6 +53,21 @@
     <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
     <PackageReference Include="Nefarius.Drivers.HidHide" Version="3.4.0" />
     <PackageReference Include="Nefarius.Utilities.DeviceManagement" Version="5.2.0" />
+    <!-- Nefarius.Vicius.Abstractions (a transitive dependency via Nefarius.Drivers.HidHide's
+         HidHideSetupProvider) references NJsonSchema.Annotations attributes on its DTOs but
+         doesn't declare it as a runtime dependency - System.Text.Json's reflection-based type-info
+         building still has to resolve every custom attribute on a type's members regardless of
+         whether it's looking for that one, so without this present, deserializing HidHide's
+         update-check response throws a FileNotFoundException for this assembly. Version pinned to
+         exactly what that compiled reference expects (11.3.2.0). -->
+    <PackageReference Include="NJsonSchema.Annotations" Version="11.3.2" />
+    <!-- Same reason as NJsonSchema.Annotations above: another attribute type
+         Nefarius.Vicius.Abstractions references without declaring as a dependency. Confirmed via
+         Nefarius.Vicius.Abstractions.dll's own GetReferencedAssemblies() that these two are the
+         only non-framework assemblies it needs at all, so this closes out the whole gap in one
+         pass rather than one exception-and-fix cycle at a time. Newtonsoft.Json keeps assembly
+         version 13.0.0.0 across all 13.0.x NuGet releases, so the exact patch doesn't matter here. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
 
   <ItemGroup>

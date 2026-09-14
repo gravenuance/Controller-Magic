@@ -35,6 +35,20 @@ internal sealed class Sdl2PadReader : IDisposable
     public Sdl2PadReader()
     {
         SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+
+        // Root cause of a severe Windows USER-object leak (climbing to the ~10,000-per-process
+        // ceiling within seconds, breaking the tray menu and every dialog), confirmed independent
+        // of this app's own HidHide/ViGEm feature - it happens purely from SDL_Init(GAMECONTROLLER)
+        // running every launch with a controller connected. Traced to ppy's SDL2 fork's own
+        // source: the RAWINPUT joystick driver (the default active backend here for an Xbox-type
+        // pad) unconditionally calls RAWINPUT_InitWindowsGamingInput() to correlate with
+        // Windows.Gaming.Input for extended controller features - that WinRT activation is what
+        // leaks. SDL_JOYSTICK_WGI (a compile-time #ifdef, not a runtime hint - a dead end tried
+        // first) doesn't gate this at all; SDL_HINT_JOYSTICK_RAWINPUT does, by disabling the whole
+        // driver. Falls back to SDL's XInput/DirectInput backends, which this app already relies
+        // on primarily anyway via its own separate XInputPadReader.
+        SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_RAWINPUT, "0");
+
         _initialized = SDL.SDL_Init(SDL.SDL_INIT_GAMECONTROLLER) == 0;
     }
 

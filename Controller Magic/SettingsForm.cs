@@ -481,7 +481,6 @@ namespace ControllerMagic
                 Apply();
         }
 
-        private const string HidHideCaveatText = "May be blocked by some anti-cheat (BattlEye, EasyAntiCheat).";
         private const string HidHideNeedsDriversText = "Needs drivers - connect to the internet to install.";
 
         private void AddHidHideToggle()
@@ -490,7 +489,7 @@ namespace ControllerMagic
 
             var title = new Label
             {
-                Text = "Suppress Guide button & focus jumps",
+                Text = "Use HidHide",
                 AutoSize = true,
                 Location = new Point(CardPadding, _cardY + 3),
                 Font = Theme.UiFontBold,
@@ -506,7 +505,7 @@ namespace ControllerMagic
                 Checked = AppSettings.Instance.UseHidHide,
                 Enabled = false,
                 TabIndex = _nextTabIndex++,
-                AccessibleName = "Suppress Guide button and stick/D-pad focus jumps",
+                AccessibleName = "Use HidHide",
             };
             toggle.Location = new Point(_card.Width - CardPadding - toggle.Width, _cardY);
 
@@ -554,7 +553,7 @@ namespace ControllerMagic
             {
                 AppSettings.Instance.UseHidHide = false;
                 RequestSave();
-                status.Text = HidHideCaveatText;
+                status.Text = string.Empty;
                 return;
             }
 
@@ -562,27 +561,42 @@ namespace ControllerMagic
             if (!driverStatus.HidHideInstalled || !driverStatus.VigemInstalled)
             {
                 var progress = new Progress<string>(text => status.Text = text);
-                var result = await DriverInstaller.InstallAsync(progress, CancellationToken.None).ConfigureAwait(true);
+                var result = await DriverInstaller.InstallAsync(driverStatus, progress, CancellationToken.None).ConfigureAwait(true);
 
-                if (!result.Succeeded)
+                switch (result.Outcome)
                 {
-                    toggle.Checked = false;
-                    status.Text = result.Outcome switch
-                    {
-                        InstallOutcome.ElevationDeclined => "Elevation was cancelled.",
-                        InstallOutcome.NetworkError => "No network - couldn't download drivers.",
-                        InstallOutcome.SignatureVerificationFailed => "Driver signature check failed.",
-                        _ => "Driver install failed - see log.",
-                    };
-                    return;
-                }
+                    case InstallOutcome.Success:
+                        await _poller.RefreshDriverStatusAsync().ConfigureAwait(true);
+                        break;
 
-                await _poller.RefreshDriverStatusAsync().ConfigureAwait(true);
+                    case InstallOutcome.RebootRequired:
+                        // Intent is still "on" - a driver install genuinely needs a restart to
+                        // finish, so save that now rather than making the user flip the toggle
+                        // again after rebooting. GamepadPassthroughController's own driver check
+                        // won't actually activate anything until it detects the driver is truly
+                        // operational, so this can't turn cloaking on prematurely.
+                        await _poller.RefreshDriverStatusAsync().ConfigureAwait(true);
+                        AppSettings.Instance.UseHidHide = true;
+                        RequestSave();
+                        status.Text = "Restart your computer to finish setup.";
+                        return;
+
+                    default:
+                        toggle.Checked = false;
+                        status.Text = result.Outcome switch
+                        {
+                            InstallOutcome.ElevationDeclined => "Elevation was cancelled.",
+                            InstallOutcome.NetworkError => "No network - couldn't download drivers.",
+                            InstallOutcome.SignatureVerificationFailed => "Driver signature check failed.",
+                            _ => "Driver install failed - see log.",
+                        };
+                        return;
+                }
             }
 
             AppSettings.Instance.UseHidHide = true;
             RequestSave();
-            status.Text = HidHideCaveatText;
+            status.Text = string.Empty;
         }
 
         private async Task ReconcileHidHideToggleAsync(ToggleSwitch toggle, Label status)
@@ -599,7 +613,7 @@ namespace ControllerMagic
                     return;
 
                 toggle.Enabled = enabled;
-                status.Text = enabled ? HidHideCaveatText : HidHideNeedsDriversText;
+                status.Text = enabled ? string.Empty : HidHideNeedsDriversText;
             }
 
             if (toggle.InvokeRequired)

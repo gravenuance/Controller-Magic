@@ -1,4 +1,5 @@
 using Nefarius.Drivers.HidHide;
+using Nefarius.Drivers.HidHide.Exceptions;
 using Nefarius.Utilities.DeviceManagement.PnP;
 
 namespace ControllerMagic;
@@ -73,6 +74,13 @@ internal sealed class HidHideBridge
         try
         {
             _service.IsActive = enabled;
+        }
+        catch (HidHideDriverNotFoundException)
+        {
+            // Expected, not warning-worthy: GamepadPassthroughController.ForceOffAtStartup calls
+            // this unconditionally on every launch, for every user, regardless of whether HidHide
+            // is even installed - which it isn't for the overwhelming majority who've never
+            // turned "Use HidHide" on. There's nothing to toggle, so nothing went wrong.
         }
         catch (Exception ex)
         {

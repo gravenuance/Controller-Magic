@@ -315,7 +315,7 @@ namespace ControllerMagic
         // time Stop() returns - this only releases the underlying ViGEmClient object itself.
         public void Dispose() => _passthrough.Dispose();
 
-        // For Settings' "Suppress Guide button" toggle: whether it should currently be
+        // For Settings' "Use HidHide" toggle: whether it should currently be
         // enabled/checked, and a way to tell the poller a fresh install just succeeded.
         public Task<DriverStatus> DetectDriverStatusAsync(CancellationToken ct = default) =>
             _passthrough.DetectDriverStatusAsync(ct);
@@ -492,7 +492,7 @@ namespace ControllerMagic
                     // frame below - see the comment on PumpEvents() for why that independence matters.
                     sdlPadReader.PumpEvents();
 
-                    bool gotXInput = XInputPadReader.TryReadAny(out var pad);
+                    bool gotXInput = XInputPadReader.TryReadAny(out var pad, _passthrough.VirtualPadUserIndex);
                     bool gotPad = gotXInput || sdlPadReader.TryGetLatest(out pad);
 
                     IsControllerConnected = gotPad;

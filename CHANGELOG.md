@@ -8,6 +8,64 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Changed
+- Renamed the "Suppress Guide button & focus jumps" setting to "Use HidHide" and removed its
+  in-app anti-cheat caveat label (still noted in the README).
+
+### Fixed
+- "Use HidHide" crashed when it needed to install HidHide, because `HidHideSetupProvider` needs
+  an `HttpClient` pre-configured with a specific base address and headers (normally wired up by
+  HidHide's own DI registration) that this app never set up; now configured correctly, and driver
+  download failures fail soft instead of crashing regardless of the specific exception type.
+- The crash-recovery uncloak on every app startup logged a Warning even though "HidHide isn't
+  installed" is the normal state for everyone who hasn't turned the setting on - now silent for
+  that expected case.
+- "Use HidHide" still failed to install HidHide even after the above fix: `Nefarius.Vicius.
+  Abstractions` references `NJsonSchema.Annotations` and `Newtonsoft.Json` attribute types on its
+  DTOs without declaring either as a runtime dependency, so `System.Text.Json`'s reflection-based
+  type-info building threw a `FileNotFoundException` the first time it needed to inspect one of
+  those types (surfaced one at a time, since the first fix only got as far as the next missing
+  assembly). Both added directly as dependencies, confirmed against `Nefarius.Vicius.
+  Abstractions.dll`'s own `GetReferencedAssemblies()` to be the complete set, and verified against
+  the real update-check and download endpoints end-to-end before shipping.
+- Installing HidHide silently rebooted the machine immediately and without warning: the silent-
+  install flags were missing `/norestart`. Also fixed two related issues found alongside it: the
+  installer's own exit code was never actually checked (only whether the process exited at all),
+  so a real per-installer failure could have been reported as success; and the setting could
+  silently revert to off with the drivers never fully installed, because an unprompted reboot
+  killed the app mid-install before it could save anything or install the second driver. Now:
+  `/norestart` is set, each installer's real exit code is captured and checked individually (0 =
+  success, 3010 = needs a reboot to finish - shown to the user instead of guessed at, anything
+  else = a genuine failure), and only whichever driver isn't already installed is re-downloaded
+  and re-run.
+- With "Use HidHide" active and a real controller connected, the stick stopped moving the mouse
+  entirely (though the controller still showed as connected). Cause: XInput's public API exposes
+  no device identity, only a slot number, so once ViGEmBus's virtual pad claimed an XInput slot
+  this app's own slot-scanning could end up reading that virtual pad back instead of the real
+  controller - and since the virtual pad's stick is deliberately kept neutral (see the focus-jump
+  fix above), that read back as "connected, but never moves." Fixed by having the virtual pad's
+  own XInput slot excluded from this app's read scan.
+- `IXbox360Controller.UserIndex` (used for the fix above) throws until ViGEmBus reports the
+  assigned slot back asynchronously, which isn't necessarily immediate after `Connect()` - this
+  app queried it unguarded on every poll tick. Now caught and treated as "not yet known" rather
+  than left to propagate as an unhandled exception on the poll thread.
+- A severe Windows USER-object leak could climb to the ~10,000-per-process ceiling within seconds
+  of a controller being connected, severely enough to break the tray icon's menu and the Settings
+  dialog with no in-app way left to recover short of killing the process. Initially suspected to
+  be tied to "Use HidHide" (HidHide/ViGEmBus), but isolated testing showed it happened with that
+  feature fully off too. Root cause: SDL's `rawinput` joystick driver unconditionally correlates
+  with the Windows.Gaming.Input API for extended Xbox-controller features whenever it's the active
+  backend for a connected device, and that WinRT activation was what leaked - unrelated to this
+  app's own drivers entirely. Fixed by disabling that one SDL driver (`SDL_HINT_JOYSTICK_RAWINPUT`
+  in `Sdl2PadReader`'s constructor); this app's own XInput read path, and SDL's separate `HIDAPI`
+  driver used for non-Xbox controllers (PS4/PS5, Switch Pro), are unaffected.
+
+### Added
+- Periodic (10-minute) logging of the process's Windows USER/GDI object counts, and a proactive
+  safety cutoff that turns "Use HidHide" off automatically if the count ever climbs too far while
+  active - added while chasing the leak above, kept afterward as a general defense-in-depth
+  measure against any future leak of the same kind.
+
 ## [1.5.0] - 2026-09-13
 
 ### Added

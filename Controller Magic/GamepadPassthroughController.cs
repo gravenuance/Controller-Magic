@@ -13,6 +13,7 @@ internal sealed class GamepadPassthroughController : IDisposable
 {
     private readonly HidHideBridge _hidHide = new();
     private readonly VigemBridge _vigem = new();
+    private readonly TimeProvider _clock;
 
     private volatile bool _fullscreenSuspended;
     // volatile bool, not a DriverStatus struct field: written from background tasks (the first-
@@ -23,6 +24,23 @@ internal sealed class GamepadPassthroughController : IDisposable
     private bool _lastAppliedActive;
     private int _transitioning;
     private PhysicalDeviceIdentity? _lastKnownDevice;
+
+    // Safety cutoff, kept as defense-in-depth even after the leak below was root-caused and
+    // fixed: a real session hit Windows' ~10,000-per-process USER-object ceiling within seconds
+    // of a controller being connected, severely enough to break the tray menu and every dialog
+    // with no in-app way left to recover. Root cause turned out to be unrelated to this feature
+    // entirely - see Sdl2PadReader's constructor - but the failure mode was bad enough that this
+    // proactive cutoff stays: if USER objects ever climb again for any other reason, this
+    // degrades it to "the feature turns itself off" instead of "the whole app UI stops working."
+    private DateTimeOffset _lastResourceCheckUtc = DateTimeOffset.MinValue;
+    private static readonly TimeSpan ResourceCheckInterval = TimeSpan.FromMilliseconds(500);
+    private const uint UserObjectSafetyThreshold = 5000;
+    private bool _thresholdLogged;
+
+    public GamepadPassthroughController(TimeProvider? clock = null)
+    {
+        _clock = clock ?? TimeProvider.System;
+    }
 
     // Pure policy, isolated from driver I/O so it's directly testable: the feature only ever
     // runs with the setting on, the drivers actually present, and no fullscreen exclusion zone
@@ -44,6 +62,11 @@ internal sealed class GamepadPassthroughController : IDisposable
         Task.Run(() => DriverDependency.Detect(_hidHide), ct);
 
     public void SetFullscreenSuspended(bool suspended) => _fullscreenSuspended = suspended;
+
+    // The XInput slot the virtual pad currently occupies, if connected - ControllerPoller feeds
+    // this to XInputPadReader so its slot-scanning never reads this app's own virtual pad back as
+    // if it were a real controller.
+    public int? VirtualPadUserIndex => _vigem.UserIndex;
 
     public void Tick(PadState pad, bool gotPad, PhysicalDeviceIdentity? deviceIdentity)
     {
@@ -76,10 +99,69 @@ internal sealed class GamepadPassthroughController : IDisposable
 
         if (_lastAppliedActive && gotPad)
             _vigem.SubmitReport(pad, includeStickAndDpad: false);
+
+        // Runs every tick regardless of active state, not just while submitting reports: a real
+        // session showed the USER-object count keep climbing well past the safety threshold even
+        // several seconds *after* this had already turned the feature off, which the previous
+        // version of this check - nested inside "only while active" - had no visibility into at
+        // all once it disabled itself. Keeping it always-on can't undo an already-leaked handle,
+        // but it does mean a still-unexplained leak elsewhere always gets logged instead of
+        // silently continuing unobserved the moment this feature stops being the obvious suspect.
+        CheckResourceSafety();
+    }
+
+    private void CheckResourceSafety()
+    {
+        var now = _clock.GetUtcNow();
+        if (now - _lastResourceCheckUtc < ResourceCheckInterval)
+            return;
+        _lastResourceCheckUtc = now;
+
+        uint userObjects = ResourceUsageMonitor.GetUserObjectCount();
+        if (userObjects < UserObjectSafetyThreshold)
+        {
+            _thresholdLogged = false;
+            return;
+        }
+
+        // Logged once per crossing, not every 500ms for as long as it stays above the threshold -
+        // a leaked USER object has no way to un-leak itself, so repeating this wouldn't add
+        // information, just noise.
+        if (_thresholdLogged)
+            return;
+        _thresholdLogged = true;
+
+        if (!_lastAppliedActive)
+        {
+            AppLog.Default.Error(
+                $"GamepadPassthroughController: USER object count ({userObjects}) crossed the safety threshold " +
+                "while \"Use HidHide\" was already off - whatever is leaking isn't limited to this feature's own " +
+                "active state.");
+            return;
+        }
+
+        AppLog.Default.Error(
+            $"GamepadPassthroughController: USER object count ({userObjects}) crossed the safety threshold while " +
+            "active - turning \"Use HidHide\" off automatically to avoid exhausting the process's window-handle " +
+            "quota.");
+
+        AppSettings.Instance.UseHidHide = false;
+        AppSettings.Instance.Save();
+
+        if (Interlocked.CompareExchange(ref _transitioning, 1, 0) == 0)
+        {
+            _lastAppliedActive = false;
+            _ = Task.Run(() => ApplyTransition(false, null)).ContinueWith(
+                _ => Volatile.Write(ref _transitioning, 0),
+                TaskScheduler.Default);
+        }
     }
 
     private void ApplyTransition(bool active, PhysicalDeviceIdentity? device)
     {
+        string label = active ? "activate" : "deactivate";
+        ResourceUsageMonitor.LogSnapshot($"before-{label}");
+
         if (active)
         {
             _hidHide.EnsureAppAllowListed();
@@ -97,6 +179,8 @@ internal sealed class GamepadPassthroughController : IDisposable
             _vigem.Disconnect();
             _hidHide.SetCloakingEnabled(false);
         }
+
+        ResourceUsageMonitor.LogSnapshot($"after-{label}");
     }
 
     // Best-effort, called from ControllerPoller.Loop's finally block right before the poll
