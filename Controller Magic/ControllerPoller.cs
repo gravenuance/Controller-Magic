@@ -510,7 +510,7 @@ namespace ControllerMagic
                         ProcessButtons(pad);
                     }
 
-                    _passthrough.Tick(pad, gotPad, sdlPadReader.CurrentDeviceIdentity);
+                    _passthrough.Tick(pad, gotPad, sdlPadReader.CurrentDeviceIdentity, sdlPadReader.ConnectionSerial);
 
                     Thread.Sleep(8);
                 }
@@ -665,6 +665,12 @@ namespace ControllerMagic
         }
 
         public event Action<bool>? KeyboardModeChanged;
+
+        public event Action<PassthroughNotice>? PassthroughNoticeRaised
+        {
+            add => _passthrough.NoticeRaised += value;
+            remove => _passthrough.NoticeRaised -= value;
+        }
 
         // Enum.HasFlag boxes both the receiver and the argument on every call; at this loop's
         // ~125Hz cadence with a dozen-plus flags checked per tick, that's a steady stream of

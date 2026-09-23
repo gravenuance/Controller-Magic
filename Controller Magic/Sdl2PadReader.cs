@@ -32,6 +32,9 @@ internal sealed class Sdl2PadReader : IDisposable
     // controller is open, or SDL couldn't report a path for this specific device.
     public PhysicalDeviceIdentity? CurrentDeviceIdentity { get; private set; }
 
+    // Bumped on every successful open, so callers can tell a reconnect apart from the same session.
+    public int ConnectionSerial { get; private set; }
+
     public Sdl2PadReader()
     {
         SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -104,6 +107,7 @@ internal sealed class Sdl2PadReader : IDisposable
             IntPtr joystick = SDL.SDL_GameControllerGetJoystick(handle);
             _controllerInstanceId = SDL.SDL_JoystickInstanceID(joystick);
             CurrentDeviceIdentity = TryGetDeviceIdentity(handle, joystick);
+            ConnectionSerial++;
             return;
         }
     }

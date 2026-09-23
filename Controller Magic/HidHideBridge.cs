@@ -4,6 +4,13 @@ using Nefarius.Utilities.DeviceManagement.PnP;
 
 namespace ControllerMagic;
 
+internal enum BlockResult
+{
+    AlreadyBlocked,
+    NewlyBlocked,
+    Failed,
+}
+
 // Thin wrapper around HidHide's control service: cloaks the physical controller from every
 // process except this app, so Xbox Game Bar and Steam never see a Guide-button press on it at
 // all - there's no config flag either exposes to disable that, so this is the only reliable fix.
@@ -44,26 +51,60 @@ internal sealed class HidHideBridge
     // deviceInterfacePath is SDL's device *interface* path (SDL_JoystickPath's format); HidHide's
     // block-list keys on the device *instance* path instead, so it's converted here rather than
     // asking every caller to know about that distinction.
-    public void SetDeviceBlocked(string deviceInterfacePath, bool blocked)
+    public BlockResult BlockDevice(string deviceInterfacePath)
     {
         try
         {
-            string? instanceId = PnPDevice.GetInstanceIdFromInterfaceId(deviceInterfacePath);
-            if (string.IsNullOrEmpty(instanceId))
+            var instanceIds = ResolveInstanceIds(deviceInterfacePath);
+            if (instanceIds.Count == 0)
             {
                 AppLog.Default.Warning($"HidHideBridge: could not resolve an instance id for {deviceInterfacePath}");
-                return;
+                return BlockResult.Failed;
             }
 
-            bool alreadyBlocked = _service.BlockedInstanceIds.Contains(instanceId, StringComparer.OrdinalIgnoreCase);
-            if (blocked && !alreadyBlocked)
+            var blockedIds = _service.BlockedInstanceIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var newIds = instanceIds.Where(id => !blockedIds.Contains(id)).ToList();
+            foreach (string instanceId in newIds)
                 _service.AddBlockedInstanceId(instanceId);
-            else if (!blocked && alreadyBlocked)
-                _service.RemoveBlockedInstanceId(instanceId);
+
+            return newIds.Count == 0 ? BlockResult.AlreadyBlocked : BlockResult.NewlyBlocked;
         }
         catch (Exception ex)
         {
-            AppLog.Default.Warning($"HidHideBridge: failed to update block state for {deviceInterfacePath}", ex);
+            AppLog.Default.Warning($"HidHideBridge: failed to block {deviceInterfacePath}", ex);
+            return BlockResult.Failed;
+        }
+    }
+
+    // SDL's XInput backend reports this literal instead of a real device path (SDL_xinputjoystick.c).
+    internal static bool IsXInputPlaceholderPath(string path) =>
+        path.StartsWith("XInput#", StringComparison.Ordinal);
+
+    private static List<string> ResolveInstanceIds(string deviceInterfacePath)
+    {
+        if (IsXInputPlaceholderPath(deviceInterfacePath))
+            return FindPhysicalXInputInstanceIds();
+
+        string? instanceId = PnPDevice.GetInstanceIdFromInterfaceId(deviceInterfacePath);
+        return string.IsNullOrEmpty(instanceId) ? [] : [instanceId];
+    }
+
+    // XInput can't map a slot to a device, so every physical XInput pad is hidden; IsVirtual keeps
+    // ViGEmBus's own virtual pad visible.
+    private static List<string> FindPhysicalXInputInstanceIds()
+    {
+        var instanceIds = new List<string>();
+        AddPhysicalDevices(DeviceInterfaceIds.XUsbDevice, _ => true, instanceIds);
+        AddPhysicalDevices(DeviceInterfaceIds.HidDevice, id => id.Contains("IG_", StringComparison.OrdinalIgnoreCase), instanceIds);
+        return instanceIds;
+    }
+
+    private static void AddPhysicalDevices(Guid interfaceGuid, Func<string, bool> include, List<string> instanceIds)
+    {
+        for (int i = 0; Devcon.FindByInterfaceGuid(interfaceGuid, out PnPDevice device, i); i++)
+        {
+            if (include(device.InstanceId) && !device.IsVirtual())
+                instanceIds.Add(device.InstanceId);
         }
     }
 

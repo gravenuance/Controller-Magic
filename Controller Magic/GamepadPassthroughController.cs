@@ -1,5 +1,14 @@
 namespace ControllerMagic;
 
+// Something the user has to know or act on; raised off the UI thread.
+internal enum PassthroughNotice
+{
+    ReconnectToFinishHiding,
+    TurnedOffBySafetyCutoff,
+}
+
+internal readonly record struct PassthroughTarget(bool Hiding, bool VirtualPad, bool BlockConnection);
+
 // Sits alongside ControllerPoller's existing read path (XInput/SDL -> PadState) rather than
 // replacing it: when active, this additionally feeds the same per-tick PadState into a virtual
 // Xbox 360 controller (via VigemBridge) while the real device is cloaked from everything else
@@ -21,9 +30,11 @@ internal sealed class GamepadPassthroughController : IDisposable
     // tick, so it needs to be a single primitive to be safely volatile.
     private volatile bool _driversReady;
     private bool _startupResetDone;
-    private bool _lastAppliedActive;
+    private PassthroughTarget _applied;
     private int _transitioning;
-    private PhysicalDeviceIdentity? _lastKnownDevice;
+    private Connection? _connection;
+
+    public event Action<PassthroughNotice>? NoticeRaised;
 
     // Safety cutoff, kept as defense-in-depth even after the leak below was root-caused and
     // fixed: a real session hit Windows' ~10,000-per-process USER-object ceiling within seconds
@@ -48,6 +59,25 @@ internal sealed class GamepadPassthroughController : IDisposable
     internal static bool ComputeShouldBeActive(bool settingOn, bool driversReady, bool fullscreenSuspended) =>
         settingOn && driversReady && !fullscreenSuspended;
 
+    // Hiding doesn't wait for a controller: HidHide only filters opens made after it starts, so a
+    // pad has to arrive already hidden or Steam and the system grab it first.
+    internal static PassthroughTarget ComputeTarget(
+        bool settingOn, bool driversReady, bool fullscreenSuspended,
+        bool padConnected, bool connectionKnown, bool connectionBlocked)
+    {
+        if (!ComputeShouldBeActive(settingOn, driversReady, fullscreenSuspended))
+            return default;
+
+        return new PassthroughTarget(
+            Hiding: true,
+            VirtualPad: padConnected && connectionKnown,
+            BlockConnection: connectionKnown && !connectionBlocked);
+    }
+
+    // Only a connection that arrived while cloaked and already block-listed is hidden from everyone.
+    internal static bool ShouldAskToReconnect(bool cloakedAtArrival, bool wasAlreadyBlocked) =>
+        !(cloakedAtArrival && wasAlreadyBlocked);
+
     // Called once at construction (fire-and-forget, off the UI thread) and again from Settings
     // right after a successful driver install - never on a timer.
     public void RefreshDriverStatus()
@@ -68,7 +98,7 @@ internal sealed class GamepadPassthroughController : IDisposable
     // if it were a real controller.
     public int? VirtualPadUserIndex => _vigem.UserIndex;
 
-    public void Tick(PadState pad, bool gotPad, PhysicalDeviceIdentity? deviceIdentity)
+    public void Tick(PadState pad, bool gotPad, PhysicalDeviceIdentity? deviceIdentity, int connectionSerial)
     {
         if (!_startupResetDone)
         {
@@ -82,22 +112,23 @@ internal sealed class GamepadPassthroughController : IDisposable
             });
         }
 
-        if (deviceIdentity.HasValue)
-            _lastKnownDevice = deviceIdentity;
+        TrackConnection(deviceIdentity, connectionSerial);
 
-        bool wantActive = ComputeShouldBeActive(AppSettings.Instance.UseHidHide, _driversReady, _fullscreenSuspended)
-            && gotPad && _lastKnownDevice.HasValue;
+        var target = ComputeTarget(
+            AppSettings.Instance.UseHidHide, _driversReady, _fullscreenSuspended,
+            gotPad, _connection != null, _connection?.BlockAttempted ?? false);
 
-        if (wantActive != _lastAppliedActive && Interlocked.CompareExchange(ref _transitioning, 1, 0) == 0)
+        if (target != _applied && Interlocked.CompareExchange(ref _transitioning, 1, 0) == 0)
         {
-            var device = _lastKnownDevice;
-            _lastAppliedActive = wantActive;
-            _ = Task.Run(() => ApplyTransition(wantActive, device)).ContinueWith(
+            var previous = _applied;
+            var toBlock = target.BlockConnection ? _connection : null;
+            _applied = target with { BlockConnection = false };
+            _ = Task.Run(() => ApplyTransition(previous, target, toBlock)).ContinueWith(
                 _ => Volatile.Write(ref _transitioning, 0),
                 TaskScheduler.Default);
         }
 
-        if (_lastAppliedActive && gotPad)
+        if (_applied.VirtualPad && gotPad)
             _vigem.SubmitReport(pad, includeStickAndDpad: false);
 
         // Runs every tick regardless of active state, not just while submitting reports: a real
@@ -108,6 +139,14 @@ internal sealed class GamepadPassthroughController : IDisposable
         // but it does mean a still-unexplained leak elsewhere always gets logged instead of
         // silently continuing unobserved the moment this feature stops being the obvious suspect.
         CheckResourceSafety();
+    }
+
+    private void TrackConnection(PhysicalDeviceIdentity? deviceIdentity, int connectionSerial)
+    {
+        if (deviceIdentity is not { IsValid: true } device || connectionSerial == _connection?.Serial)
+            return;
+
+        _connection = new Connection(connectionSerial, device, cloakedAtArrival: _applied.Hiding);
     }
 
     private void CheckResourceSafety()
@@ -131,7 +170,7 @@ internal sealed class GamepadPassthroughController : IDisposable
             return;
         _thresholdLogged = true;
 
-        if (!_lastAppliedActive)
+        if (!_applied.Hiding)
         {
             AppLog.Default.Error(
                 $"GamepadPassthroughController: USER object count ({userObjects}) crossed the safety threshold " +
@@ -145,42 +184,62 @@ internal sealed class GamepadPassthroughController : IDisposable
             "active - turning \"Use HidHide\" off automatically to avoid exhausting the process's window-handle " +
             "quota.");
 
+        // The next Tick sees the setting off and stands everything down through the normal path.
         AppSettings.Instance.UseHidHide = false;
         AppSettings.Instance.Save();
-
-        if (Interlocked.CompareExchange(ref _transitioning, 1, 0) == 0)
-        {
-            _lastAppliedActive = false;
-            _ = Task.Run(() => ApplyTransition(false, null)).ContinueWith(
-                _ => Volatile.Write(ref _transitioning, 0),
-                TaskScheduler.Default);
-        }
+        NoticeRaised?.Invoke(PassthroughNotice.TurnedOffBySafetyCutoff);
     }
 
-    private void ApplyTransition(bool active, PhysicalDeviceIdentity? device)
+    // Blocks before cloaking so a newly hidden device never has an unfiltered moment. Turning off
+    // only flips the cloak flag - allow-list and block-list entries stay so re-activating is instant.
+    private void ApplyTransition(PassthroughTarget previous, PassthroughTarget target, Connection? toBlock)
     {
-        string label = active ? "activate" : "deactivate";
-        ResourceUsageMonitor.LogSnapshot($"before-{label}");
+        ResourceUsageMonitor.LogSnapshot($"before-transition {previous} -> {target}");
 
-        if (active)
-        {
+        if (target.Hiding && !previous.Hiding)
             _hidHide.EnsureAppAllowListed();
-            if (device.HasValue)
-                _hidHide.SetDeviceBlocked(device.Value.InterfacePath, true);
-            _hidHide.SetCloakingEnabled(true);
-            _vigem.TryConnect();
-        }
-        else
-        {
-            // Only the global cloak flag flips off here - the allow-list entry and the device's
-            // block-list entry deliberately stay in place (per the "leave drivers/config
-            // installed" decision) so re-activating is instant, whether that's the user flipping
-            // the Settings toggle back on or a fullscreen exclusion ending.
-            _vigem.Disconnect();
-            _hidHide.SetCloakingEnabled(false);
-        }
 
-        ResourceUsageMonitor.LogSnapshot($"after-{label}");
+        if (toBlock != null)
+            BlockConnection(toBlock);
+
+        if (target.Hiding != previous.Hiding)
+            _hidHide.SetCloakingEnabled(target.Hiding);
+
+        if (target.VirtualPad && !previous.VirtualPad)
+            _vigem.TryConnect();
+        else if (!target.VirtualPad && previous.VirtualPad)
+            _vigem.Disconnect();
+
+        ResourceUsageMonitor.LogSnapshot("after-transition");
+    }
+
+    private void BlockConnection(Connection connection)
+    {
+        var device = connection.Device;
+        var result = _hidHide.BlockDevice(device.InterfacePath);
+        connection.BlockAttempted = true;
+        AppLog.Default.Info(
+            $"GamepadPassthroughController: block {device.VendorId:X4}:{device.ProductId:X4} -> {result} " +
+            $"(cloaked at arrival: {connection.CloakedAtArrival})");
+
+        if (result != BlockResult.Failed && ShouldAskToReconnect(connection.CloakedAtArrival, result == BlockResult.AlreadyBlocked))
+            NoticeRaised?.Invoke(PassthroughNotice.ReconnectToFinishHiding);
+    }
+
+    // One SDL open of a physical pad; blocking is attempted once per connection.
+    private sealed class Connection(int serial, PhysicalDeviceIdentity device, bool cloakedAtArrival)
+    {
+        private volatile bool _blockAttempted;
+
+        public int Serial { get; } = serial;
+        public PhysicalDeviceIdentity Device { get; } = device;
+        public bool CloakedAtArrival { get; } = cloakedAtArrival;
+
+        public bool BlockAttempted
+        {
+            get => _blockAttempted;
+            set => _blockAttempted = value;
+        }
     }
 
     // Best-effort, called from ControllerPoller.Loop's finally block right before the poll

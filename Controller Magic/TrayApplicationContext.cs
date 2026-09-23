@@ -50,6 +50,7 @@ namespace ControllerMagic
 
             _controllerPoller = new ControllerPoller();
             _controllerPoller.KeyboardModeChanged += OnKeyboardModeChanged;
+            _controllerPoller.PassthroughNoticeRaised += OnPassthroughNotice;
             _controllerPoller.Start();
 
             _overlay = new KeyboardOverlayForm(_controllerPoller);
@@ -125,6 +126,18 @@ namespace ControllerMagic
             }
         }
 
+        private void OnPassthroughNotice(PassthroughNotice notice)
+        {
+            string text = notice switch
+            {
+                PassthroughNotice.ReconnectToFinishHiding => "Turn your controller off and on to finish hiding it.",
+                PassthroughNotice.TurnedOffBySafetyCutoff => "Use HidHide was turned off: too many window handles in use.",
+                _ => throw new ArgumentOutOfRangeException(nameof(notice), notice, null),
+            };
+
+            _overlay.BeginInvoke(() => _trayIcon.ShowBalloonTip(10_000, "Controller Magic", text, ToolTipIcon.Info));
+        }
+
         private void HandleKeyboardModeChanged(bool enabled)
         {
             if (enabled)
@@ -184,6 +197,7 @@ namespace ControllerMagic
         protected override void ExitThreadCore()
         {
             _controllerPoller.KeyboardModeChanged -= OnKeyboardModeChanged;
+            _controllerPoller.PassthroughNoticeRaised -= OnPassthroughNotice;
             _controllerPoller.Stop();
             _controllerPoller.Dispose();
 

@@ -8,6 +8,17 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Fixed
+- "Use HidHide" didn't actually hide the controller from Steam or Windows. HidHide only filters
+  handles opened after hiding starts, and hiding only switched on once a controller was already
+  connected - by which point Steam had always opened it. Hiding now stays on whenever the setting
+  is, so a controller arrives already hidden; if one was connected before hiding started, a
+  notification asks you to turn it off and on once.
+- "Use HidHide" never hid Xbox controllers: SDL's XInput backend reports a placeholder path
+  (`XInput#0`) instead of a real device path. Physical XInput controllers are now located
+  directly; ViGEmBus's own virtual pad is left visible.
+- The USER-object safety cutoff turned "Use HidHide" off silently; it now shows a notification.
+
 ## [1.6.0] - 2026-09-14
 
 ### Changed

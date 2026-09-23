@@ -27,7 +27,9 @@ remote outside of fullscreen games — a background tray app, not a window you k
   (which otherwise fights with using the stick as a mouse). Needs two one-time driver downloads
   (HidHide + ViGEmBus, fetched and installed automatically behind a single admin prompt the
   first time it's turned on) and may be blocked by some anti-cheat systems (BattlEye,
-  EasyAntiCheat) while it's active.
+  EasyAntiCheat) while it's active. A controller that was already connected when hiding started
+  (Steam grabs it at login) stays visible until it reconnects - a notification asks you to turn
+  it off and on once when that's needed.
 - **Right-click (or double-click) the tray icon** for Settings, Restart, and Exit.
 
 Deadzones, sensitivity, the acceleration curve, ramp-up time, and both app/service lists are all
