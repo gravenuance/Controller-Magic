@@ -474,7 +474,7 @@ namespace ControllerMagic
         {
             // Constructed and used only on this thread: SDL's event queue is meant to be pumped
             // consistently from a single thread for its whole lifetime.
-            using var sdlPadReader = new Sdl2PadReader();
+            using var sdlPadReader = new Sdl2PadReader(TimeProvider.System);
 
             try
             {
@@ -482,7 +482,7 @@ namespace ControllerMagic
                 {
                     bool blockedFullscreen = FullscreenHelper.IsBlockedFullscreen();
                     _passthrough.SetFullscreenSuspended(blockedFullscreen);
-                    sdlPadReader.SetLightbar(Lightbar.ColorFor(Lightbar.ComputeMode(blockedFullscreen, _keyboardMode)));
+                    sdlPadReader.SetLightbar(ControllerLights.ColorFor(ControllerLights.ComputeMode(blockedFullscreen, _keyboardMode)));
 
                     if (blockedFullscreen)
                     {
@@ -494,6 +494,7 @@ namespace ControllerMagic
                     // opened) current every tick, independent of which source ends up supplying the
                     // frame below - see the comment on PumpEvents() for why that independence matters.
                     sdlPadReader.PumpEvents();
+                    sdlPadReader.SetPlayerLights(ControllerLights.PlayerLightsFor(sdlPadReader.Battery));
 
                     bool gotXInput = XInputPadReader.TryReadAny(out var pad, _passthrough.VirtualPadUserIndex);
                     bool gotPad = gotXInput || sdlPadReader.TryGetLatest(out pad);

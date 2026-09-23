@@ -12,9 +12,10 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - Touchpad typing on the on-screen keyboard (DualSense, DualShock 4): the touchpad is the wheel -
   the finger's direction from the centre picks the letter group, its distance out picks the
   letter, and clicking the touchpad (or A) types it. The stick still works as before.
-- DualSense/DualShock 4 lightbar shows the current mode: amber for mouse, green for the on-screen
+- DualSense/DualShock 4 lightbar shows the current mode: orange for mouse, green for the on-screen
   keyboard, dim blue while standing down for a fullscreen game. Over Bluetooth this switches a
   DualSense into its enhanced report mode (as Steam does) until it reconnects.
+- DualSense player LEDs (under the touchpad) show the battery: 1 to 5 lit, all 5 while on USB.
 
 ### Fixed
 - "Use HidHide" didn't actually hide the controller from Steam or Windows. HidHide only filters

@@ -37,8 +37,24 @@ internal sealed class Sdl2PadReader : IDisposable
 
     private Color? _appliedLightbar;
 
-    public Sdl2PadReader()
+    // DS5EffectsState_t from SDL's hidapi PS5 driver: only the player-LED fields are filled in.
+    private const int DualSenseEffectSize = 47;
+    private const int EnableBits2Offset = 1;
+    private const byte EnablePlayerLights = 0x10;
+    private const int PlayerLightsOffset = 43;
+    private const byte PlayerLightsInstant = 0x20;
+    private static readonly TimeSpan PlayerLightsRefresh = TimeSpan.FromSeconds(3);
+
+    private readonly TimeProvider _clock;
+    private bool _isDualSense;
+    private byte? _appliedPlayerLights;
+    private long _playerLightsSentAt;
+    private bool _playerLightsFailureLogged;
+
+    public Sdl2PadReader(TimeProvider clock)
     {
+        _clock = clock;
+
         SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
         // Root cause of a severe Windows USER-object leak (climbing to the ~10,000-per-process
@@ -57,6 +73,9 @@ internal sealed class Sdl2PadReader : IDisposable
         // Over Bluetooth a DualSense starts in simple reports, which carry no touchpad data and
         // ignore lightbar changes; this switches it to enhanced reports until it reconnects.
         SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
+
+        // The player LEDs show battery instead of SDL's player-number pattern.
+        SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_HIDAPI_PS5_PLAYER_LED, "0");
 
         _initialized = SDL.SDL_Init(SDL.SDL_INIT_GAMECONTROLLER) == 0;
     }
@@ -111,6 +130,42 @@ internal sealed class Sdl2PadReader : IDisposable
             AppLog.Default.Warning($"Sdl2PadReader: failed to set the lightbar: {SDL.SDL_GetError()}");
     }
 
+    public BatteryLevel Battery => _controller == IntPtr.Zero
+        ? BatteryLevel.Unknown
+        : SDL.SDL_JoystickCurrentPowerLevel(SDL.SDL_GameControllerGetJoystick(_controller)) switch
+        {
+            SDL.SDL_JoystickPowerLevel.SDL_JOYSTICK_POWER_EMPTY => BatteryLevel.Empty,
+            SDL.SDL_JoystickPowerLevel.SDL_JOYSTICK_POWER_LOW => BatteryLevel.Low,
+            SDL.SDL_JoystickPowerLevel.SDL_JOYSTICK_POWER_MEDIUM => BatteryLevel.Medium,
+            SDL.SDL_JoystickPowerLevel.SDL_JOYSTICK_POWER_FULL => BatteryLevel.Full,
+            SDL.SDL_JoystickPowerLevel.SDL_JOYSTICK_POWER_WIRED => BatteryLevel.Wired,
+            _ => BatteryLevel.Unknown,
+        };
+
+    // SDL resets and rewrites the player LEDs once a Bluetooth connection settles, wiping an early
+    // pattern, so this re-sends on a slow cadence as well as on change.
+    public unsafe void SetPlayerLights(byte mask)
+    {
+        if (!_isDualSense)
+            return;
+        if (_appliedPlayerLights == mask && _clock.GetElapsedTime(_playerLightsSentAt) < PlayerLightsRefresh)
+            return;
+
+        _appliedPlayerLights = mask;
+        _playerLightsSentAt = _clock.GetTimestamp();
+
+        byte* effect = stackalloc byte[DualSenseEffectSize];
+        new Span<byte>(effect, DualSenseEffectSize).Clear();
+        effect[EnableBits2Offset] = EnablePlayerLights;
+        effect[PlayerLightsOffset] = (byte)(mask | PlayerLightsInstant);
+
+        if (SDL.SDL_GameControllerSendEffect(_controller, (IntPtr)effect, DualSenseEffectSize) != 0 && !_playerLightsFailureLogged)
+        {
+            _playerLightsFailureLogged = true;
+            AppLog.Default.Warning($"Sdl2PadReader: failed to set the player LEDs: {SDL.SDL_GetError()}");
+        }
+    }
+
     private void TryOpenFirstAvailable()
     {
         int count = SDL.SDL_NumJoysticks();
@@ -127,6 +182,7 @@ internal sealed class Sdl2PadReader : IDisposable
             IntPtr joystick = SDL.SDL_GameControllerGetJoystick(handle);
             _controllerInstanceId = SDL.SDL_JoystickInstanceID(joystick);
             CurrentDeviceIdentity = TryGetDeviceIdentity(handle, joystick);
+            _isDualSense = SDL.SDL_GameControllerGetType(handle) == SDL.SDL_GameControllerType.SDL_CONTROLLER_TYPE_PS5;
             ConnectionSerial++;
             return;
         }
@@ -156,6 +212,9 @@ internal sealed class Sdl2PadReader : IDisposable
         _controllerInstanceId = -1;
         CurrentDeviceIdentity = null;
         _appliedLightbar = null;
+        _isDualSense = false;
+        _appliedPlayerLights = null;
+        _playerLightsFailureLogged = false;
     }
 
     private static PadState Read(IntPtr controller)
