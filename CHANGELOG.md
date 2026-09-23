@@ -8,6 +8,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-23
+
 ### Added
 - Touchpad typing on the on-screen keyboard (DualSense, DualShock 4): the touchpad is the wheel -
   the finger's direction from the centre picks the letter group, its distance out picks the
