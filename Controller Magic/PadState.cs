@@ -13,4 +13,9 @@ internal struct PadState
     public byte RightTrigger;
 
     public PadButtons Buttons;
+
+    // First finger on the touchpad, 0..1 from the top-left corner; only pads with a touchpad set these.
+    public bool TouchActive;
+    public float TouchX;
+    public float TouchY;
 }

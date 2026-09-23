@@ -3,6 +3,8 @@ using System.Runtime.InteropServices;
 
 namespace ControllerMagic
 {
+    internal readonly record struct WheelSelection(int Sector, int Ring);
+
     internal sealed class ControllerPoller : IDisposable
     {
         internal struct KeyEntry
@@ -854,6 +856,15 @@ namespace ControllerMagic
                 return;
             }
 
+            if (pad.TouchActive && MapTouchToWheel(pad.TouchX, pad.TouchY, _keyboardLayer) is { } touch)
+            {
+                _currentSector = touch.Sector;
+                _slotIndex = touch.Ring;
+                if (A_pressed || WasPressed(buttons, PadButtons.TouchpadClick))
+                    EmitDaisywheelKey(_keyboardLayer, touch.Sector, touch.Ring);
+                return;
+            }
+
             int sector = GetSector(pad.LeftThumbX, pad.LeftThumbY);
 
             if (sector < 0)
@@ -904,6 +915,28 @@ namespace ControllerMagic
             int sector = ComputeSector(lx, ly, KeyboardDeadZone);
             _currentSector = sector;
             return sector;
+        }
+
+        // Inner part of the touchpad, as a fraction of its half-size, that selects nothing.
+        private const float TouchCentreDeadZone = 0.2f;
+
+        // The touchpad's centre is the wheel's centre: the finger's angle picks the sector the same
+        // way the stick does, and its distance out picks the ring.
+        internal static WheelSelection? MapTouchToWheel(float x, float y, int layer)
+        {
+            float nx = (x - 0.5f) * 2f;
+            float ny = (0.5f - y) * 2f;
+            double radius = Math.Min(1.0, Math.Sqrt(nx * nx + ny * ny));
+            if (radius < TouchCentreDeadZone)
+                return null;
+
+            int sector = ComputeSector((short)(nx * short.MaxValue), (short)(ny * short.MaxValue), deadZone: 0);
+            int count = GetEntryCount(layer, sector);
+            if (count == 0)
+                return null;
+
+            int ring = (int)((radius - TouchCentreDeadZone) / (1 - TouchCentreDeadZone) * count);
+            return new WheelSelection(sector, Math.Min(ring, count - 1));
         }
 
         // Pure geometry, split out from GetSector so it's directly testable: KeyboardDeadZone

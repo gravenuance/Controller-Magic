@@ -175,6 +175,7 @@ internal sealed class Sdl2PadReader : IDisposable
         if (IsDown(controller, SDL.SDL_GameControllerButton.SDL_CONTROLLER_BUTTON_DPAD_DOWN)) buttons |= PadButtons.DPadDown;
         if (IsDown(controller, SDL.SDL_GameControllerButton.SDL_CONTROLLER_BUTTON_DPAD_LEFT)) buttons |= PadButtons.DPadLeft;
         if (IsDown(controller, SDL.SDL_GameControllerButton.SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) buttons |= PadButtons.DPadRight;
+        if (IsDown(controller, SDL.SDL_GameControllerButton.SDL_CONTROLLER_BUTTON_TOUCHPAD)) buttons |= PadButtons.TouchpadClick;
 
         // SDL's Y axes increase downward (like raw HID); invert so positive means "up",
         // matching the convention the rest of this app expects.
@@ -186,6 +187,8 @@ internal sealed class Sdl2PadReader : IDisposable
         byte leftTrigger = TriggerToByte(SDL.SDL_GameControllerGetAxis(controller, SDL.SDL_GameControllerAxis.SDL_CONTROLLER_AXIS_TRIGGERLEFT));
         byte rightTrigger = TriggerToByte(SDL.SDL_GameControllerGetAxis(controller, SDL.SDL_GameControllerAxis.SDL_CONTROLLER_AXIS_TRIGGERRIGHT));
 
+        bool touchActive = TryReadFirstFinger(controller, out float touchX, out float touchY);
+
         return new PadState
         {
             IsConnected = true,
@@ -195,8 +198,22 @@ internal sealed class Sdl2PadReader : IDisposable
             RightThumbY = rightY,
             LeftTrigger = leftTrigger,
             RightTrigger = rightTrigger,
-            Buttons = buttons
+            Buttons = buttons,
+            TouchActive = touchActive,
+            TouchX = touchX,
+            TouchY = touchY
         };
+    }
+
+    private static bool TryReadFirstFinger(IntPtr controller, out float x, out float y)
+    {
+        x = 0;
+        y = 0;
+        if (SDL.SDL_GameControllerGetNumTouchpads(controller) == 0)
+            return false;
+
+        return SDL.SDL_GameControllerGetTouchpadFinger(controller, 0, 0, out byte state, out x, out y, out _) == 0
+            && state != 0;
     }
 
     private static bool IsDown(IntPtr controller, SDL.SDL_GameControllerButton button) =>

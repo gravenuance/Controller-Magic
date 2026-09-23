@@ -17,5 +17,6 @@ internal enum PadButtons
     DPadUp = 1 << 10,
     DPadDown = 1 << 11,
     DPadLeft = 1 << 12,
-    DPadRight = 1 << 13
+    DPadRight = 1 << 13,
+    TouchpadClick = 1 << 14
 }
