@@ -151,6 +151,7 @@ internal sealed class Sdl2PadReader : IDisposable
         if (_appliedPlayerLights == mask && _clock.GetElapsedTime(_playerLightsSentAt) < PlayerLightsRefresh)
             return;
 
+        bool changed = _appliedPlayerLights != mask;
         _appliedPlayerLights = mask;
         _playerLightsSentAt = _clock.GetTimestamp();
 
@@ -159,7 +160,11 @@ internal sealed class Sdl2PadReader : IDisposable
         effect[EnableBits2Offset] = EnablePlayerLights;
         effect[PlayerLightsOffset] = (byte)(mask | PlayerLightsInstant);
 
-        if (SDL.SDL_GameControllerSendEffect(_controller, (IntPtr)effect, DualSenseEffectSize) != 0 && !_playerLightsFailureLogged)
+        int result = SDL.SDL_GameControllerSendEffect(_controller, (IntPtr)effect, DualSenseEffectSize);
+        if (changed)
+            AppLog.Default.Info($"Sdl2PadReader: player LEDs 0x{mask:X2} for battery {Battery} (SendEffect -> {result})");
+
+        if (result != 0 && !_playerLightsFailureLogged)
         {
             _playerLightsFailureLogged = true;
             AppLog.Default.Warning($"Sdl2PadReader: failed to set the player LEDs: {SDL.SDL_GetError()}");
@@ -182,7 +187,9 @@ internal sealed class Sdl2PadReader : IDisposable
             IntPtr joystick = SDL.SDL_GameControllerGetJoystick(handle);
             _controllerInstanceId = SDL.SDL_JoystickInstanceID(joystick);
             CurrentDeviceIdentity = TryGetDeviceIdentity(handle, joystick);
-            _isDualSense = SDL.SDL_GameControllerGetType(handle) == SDL.SDL_GameControllerType.SDL_CONTROLLER_TYPE_PS5;
+            var type = SDL.SDL_GameControllerGetType(handle);
+            _isDualSense = type == SDL.SDL_GameControllerType.SDL_CONTROLLER_TYPE_PS5;
+            AppLog.Default.Info($"Sdl2PadReader: opened {type} ({SDL.SDL_GameControllerName(handle)})");
             ConnectionSerial++;
             return;
         }
