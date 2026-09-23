@@ -480,6 +480,7 @@ namespace ControllerMagic
                 {
                     bool blockedFullscreen = FullscreenHelper.IsBlockedFullscreen();
                     _passthrough.SetFullscreenSuspended(blockedFullscreen);
+                    sdlPadReader.SetLightbar(Lightbar.ColorFor(Lightbar.ComputeMode(blockedFullscreen, _keyboardMode)));
 
                     if (blockedFullscreen)
                     {

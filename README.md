@@ -20,6 +20,9 @@ remote outside of fullscreen games — a background tray app, not a window you k
 - **Streaming shortcuts** — inside a recognized streaming service (Netflix, Prime Video, Disney+,
   etc.) or Edge, the D-pad becomes arrow keys, the shoulder buttons skip to the next/previous
   episode, and X presses "Skip Intro".
+- **Lightbar mode colour** — on a DualSense or DualShock 4, the lightbar shows amber for mouse
+  control, green while the on-screen keyboard is open, and dim blue while standing down for a
+  fullscreen game.
 - **Starts with Windows** — on by default, toggleable from Settings.
 - **Use HidHide** (optional, off by default) — stops the Guide/Home/Steam button from opening
   Xbox Game Bar or Steam's Big Picture mode, so it's free to be used for something else, and

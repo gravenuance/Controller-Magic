@@ -8,6 +8,11 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Added
+- DualSense/DualShock 4 lightbar shows the current mode: amber for mouse, green for the on-screen
+  keyboard, dim blue while standing down for a fullscreen game. Over Bluetooth this switches a
+  DualSense into its enhanced report mode (as Steam does) until it reconnects.
+
 ### Fixed
 - "Use HidHide" didn't actually hide the controller from Steam or Windows. HidHide only filters
   handles opened after hiding starts, and hiding only switched on once a controller was already

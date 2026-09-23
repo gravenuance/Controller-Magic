@@ -35,6 +35,8 @@ internal sealed class Sdl2PadReader : IDisposable
     // Bumped on every successful open, so callers can tell a reconnect apart from the same session.
     public int ConnectionSerial { get; private set; }
 
+    private Color? _appliedLightbar;
+
     public Sdl2PadReader()
     {
         SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -51,6 +53,10 @@ internal sealed class Sdl2PadReader : IDisposable
         // driver. Falls back to SDL's XInput/DirectInput backends, which this app already relies
         // on primarily anyway via its own separate XInputPadReader.
         SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_RAWINPUT, "0");
+
+        // Over Bluetooth a DualSense starts in simple reports, which carry no touchpad data and
+        // ignore lightbar changes; this switches it to enhanced reports until it reconnects.
+        SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
 
         _initialized = SDL.SDL_Init(SDL.SDL_INIT_GAMECONTROLLER) == 0;
     }
@@ -89,6 +95,20 @@ internal sealed class Sdl2PadReader : IDisposable
 
         if (_controller == IntPtr.Zero)
             TryOpenFirstAvailable();
+    }
+
+    // Sent only when the colour changes; a pad without a lightbar is simply skipped.
+    public void SetLightbar(Color color)
+    {
+        if (_controller == IntPtr.Zero || _appliedLightbar == color)
+            return;
+
+        _appliedLightbar = color;
+        if (SDL.SDL_GameControllerHasLED(_controller) != SDL.SDL_bool.SDL_TRUE)
+            return;
+
+        if (SDL.SDL_GameControllerSetLED(_controller, color.R, color.G, color.B) != 0)
+            AppLog.Default.Warning($"Sdl2PadReader: failed to set the lightbar: {SDL.SDL_GetError()}");
     }
 
     private void TryOpenFirstAvailable()
@@ -135,6 +155,7 @@ internal sealed class Sdl2PadReader : IDisposable
         _controller = IntPtr.Zero;
         _controllerInstanceId = -1;
         CurrentDeviceIdentity = null;
+        _appliedLightbar = null;
     }
 
     private static PadState Read(IntPtr controller)
