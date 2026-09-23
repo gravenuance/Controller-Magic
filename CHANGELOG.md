@@ -18,6 +18,14 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   (`XInput#0`) instead of a real device path. Physical XInput controllers are now located
   directly; ViGEmBus's own virtual pad is left visible.
 - The USER-object safety cutoff turned "Use HidHide" off silently; it now shows a notification.
+- The on-screen keyboard could stop appearing after the app had run for many hours, while the
+  controller kept working. Each time it opens, it now checks that it's actually visible (painted,
+  shown, not hidden by Windows, on-screen, on top) and repairs itself only if not, logging which
+  check failed.
+
+### Changed
+- The keyboard overlay window now only exists on screen while the keyboard is open, instead of
+  sitting invisibly over the desktop all the time, and it never takes keyboard focus.
 
 ## [1.6.0] - 2026-09-14
 

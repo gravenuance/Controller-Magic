@@ -53,13 +53,9 @@ namespace ControllerMagic
             _controllerPoller.PassthroughNoticeRaised += OnPassthroughNotice;
             _controllerPoller.Start();
 
-            _overlay = new KeyboardOverlayForm(_controllerPoller);
-            // Defense in depth alongside KeyboardOverlayForm's own CreateParams fix: even with
-            // this window fully click-through and colour-key transparent from frame one, there's
-            // no reason to leave it sitting at its default (0,0) location - the top-left corner of
-            // the primary monitor - before keyboard mode ever repositions it.
-            PositionOverlayOnActiveMonitor(_overlay);
-            _overlay.Show();
+            _overlay = new KeyboardOverlayForm(_controllerPoller, TimeProvider.System);
+            // Stays hidden until keyboard mode opens, but BeginInvoke needs its handle from the start.
+            _ = _overlay.Handle;
 
             _resourceMonitor = new ResourceUsageMonitor(TimeSpan.FromMinutes(10));
 
@@ -116,13 +112,14 @@ namespace ControllerMagic
         {
             AppLog.Default.Info($"Keyboard mode {(enabled ? "enabled" : "disabled")}");
 
+            long requestedAt = TimeProvider.System.GetTimestamp();
             if (_overlay.InvokeRequired)
             {
-                _overlay.BeginInvoke(new Action(() => HandleKeyboardModeChanged(enabled)));
+                _overlay.BeginInvoke(new Action(() => HandleKeyboardModeChanged(enabled, requestedAt)));
             }
             else
             {
-                HandleKeyboardModeChanged(enabled);
+                HandleKeyboardModeChanged(enabled, requestedAt);
             }
         }
 
@@ -138,12 +135,17 @@ namespace ControllerMagic
             _overlay.BeginInvoke(() => _trayIcon.ShowBalloonTip(10_000, "Controller Magic", text, ToolTipIcon.Info));
         }
 
-        private void HandleKeyboardModeChanged(bool enabled)
+        private void HandleKeyboardModeChanged(bool enabled, long requestedAt)
         {
-            if (enabled)
+            if (!enabled)
             {
-                PositionOverlayOnActiveMonitor(_overlay);
+                _overlay.HideKeyboard();
+                return;
             }
+
+            PositionOverlayOnActiveMonitor(_overlay);
+            _overlay.ShowKeyboard();
+            _ = _overlay.VerifyVisibleAsync(TimeProvider.System.GetElapsedTime(requestedAt));
         }
 
         private static void PositionOverlayOnActiveMonitor(Form form)

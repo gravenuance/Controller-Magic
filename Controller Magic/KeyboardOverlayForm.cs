@@ -3,9 +3,15 @@
     internal sealed partial class KeyboardOverlayForm : Form
     {
 
+        private static readonly TimeSpan VerifyDelay = TimeSpan.FromMilliseconds(150);
+        private static readonly TimeSpan TimerStallThreshold = TimeSpan.FromMilliseconds(500);
+        private static readonly TimeSpan UiStallThreshold = TimeSpan.FromMilliseconds(250);
+
         private readonly ControllerPoller _poller;
+        private readonly TimeProvider _clock;
         private readonly System.Windows.Forms.Timer _timer;
-        private bool _wasKeyboardMode;
+        private int _keyboardPaintCount;
+        private long _lastTimerTickTimestamp;
 
         // BackColor/TransparencyKey below must stay pure black - that exact color is the chroma
         // key that makes the rest of the window invisible, so only these drawn tiles show up
@@ -23,11 +29,13 @@
             LineAlignment = StringAlignment.Center
         };
 
-        public KeyboardOverlayForm(ControllerPoller poller)
+        public KeyboardOverlayForm(ControllerPoller poller, TimeProvider clock)
         {
             InitializeComponent();
 
             _poller = poller;
+            _clock = clock;
+            _lastTimerTickTimestamp = clock.GetTimestamp();
 
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
@@ -41,38 +49,120 @@
 
             DoubleBuffered = true;
 
-            // A brand-new top-level window gets an opaque white placeholder surface from DWM for
-            // its first composited frame or two, before this form's own TransparencyKey-based
-            // colour-key masking takes over - independent of WS_EX_LAYERED already being set at
-            // creation (confirmed by screen-capturing the actual flash: a plain white square,
-            // sized and positioned exactly like this form, ~250ms into startup). Opacity 0 keeps
-            // the whole window - placeholder included - fully invisible through that window;
-            // Shown+BeginInvoke defers the reveal to the next message-loop pass, by which point
-            // DWM's placeholder frame and this form's own layered setup have both settled.
-            Opacity = 0;
-            Shown += (_, __) => BeginInvoke(new Action(() => Opacity = 1));
-
-            // Only repaint while keyboard mode is active (for the live sector highlight),
-            // plus one final tick on the transition out to clear the last frame.
+            // Runs only while the keyboard is shown, for the live sector highlight.
             _timer = new System.Windows.Forms.Timer { Interval = 16 }; // ~60 FPS
             _timer.Tick += (_, __) =>
             {
-                bool isKeyboardMode = _poller.KeyboardMode;
-                if (isKeyboardMode || _wasKeyboardMode)
-                    Invalidate();
-                _wasKeyboardMode = isKeyboardMode;
+                _lastTimerTickTimestamp = _clock.GetTimestamp();
+                Invalidate();
             };
-            _timer.Start();
         }
 
-        // Win32 interop for click-through - independent of the layered/opacity machinery above,
-        // so baking it into CreateParams from the start doesn't risk the same conflict.
+        // The overlay must never take focus - keys it types have to land in the app underneath.
+        protected override bool ShowWithoutActivation => true;
+
+        // Each open is a fresh show, which also puts the window back on top of every other
+        // always-on-top window. Opacity 0 until the next message-loop pass hides DWM's white
+        // placeholder frame for a newly shown window (confirmed by screen capture on 2026-09-05)
+        // and any stale frame from the previous open.
+        public void ShowKeyboard()
+        {
+            Opacity = 0;
+            if (!Visible)
+                Show();
+            OverlayWindowProbe.BringToTopmost(Handle);
+
+            _lastTimerTickTimestamp = _clock.GetTimestamp();
+            _timer.Start();
+            Invalidate();
+            Update();
+            BeginInvoke(() => Opacity = 1);
+        }
+
+        public void HideKeyboard()
+        {
+            _timer.Stop();
+            Hide();
+        }
+
+        // Called as keyboard mode opens: lets a few frames render, then checks the window can really
+        // be seen, and repairs and logs it only when it can't.
+        public async Task VerifyVisibleAsync(TimeSpan uiDelay)
+        {
+            try
+            {
+                if (uiDelay > UiStallThreshold)
+                    AppLog.Default.Warning($"KeyboardOverlay: UI thread took {uiDelay.TotalMilliseconds:F0}ms to react to keyboard mode");
+
+                var problems = await CheckAfterFramesAsync().ConfigureAwait(true);
+                if (problems is null or OverlayProblem.None)
+                    return;
+
+                AppLog.Default.Warning($"KeyboardOverlay: not visible ({problems}); recovering");
+                Recover(problems.Value);
+
+                var remaining = await CheckAfterFramesAsync().ConfigureAwait(true);
+                if (remaining is null)
+                    return;
+                if (remaining == OverlayProblem.None)
+                    AppLog.Default.Info("KeyboardOverlay: recovered");
+                else
+                    AppLog.Default.Warning($"KeyboardOverlay: still not visible after recovery ({remaining})");
+            }
+            catch (ObjectDisposedException)
+            {
+                // The app exited while waiting; nothing left to check.
+            }
+        }
+
+        // Null when keyboard mode closed during the wait, since there's nothing left to judge.
+        private async Task<OverlayProblem?> CheckAfterFramesAsync()
+        {
+            int paintsBefore = _keyboardPaintCount;
+            Invalidate();
+            await Task.Delay(VerifyDelay, _clock).ConfigureAwait(true);
+            if (!_poller.KeyboardMode)
+                return null;
+
+            bool timerTicking = _clock.GetElapsedTime(_lastTimerTickTimestamp) < TimerStallThreshold;
+            var snapshot = OverlayWindowProbe.Capture(this, painted: _keyboardPaintCount != paintsBefore, timerTicking);
+            var problems = OverlayHealth.Evaluate(snapshot);
+            if (problems != OverlayProblem.None)
+                AppLog.Default.Info($"KeyboardOverlay: {snapshot}, bounds {Bounds}");
+            return problems;
+        }
+
+        private void Recover(OverlayProblem problems)
+        {
+            if (problems.HasFlag(OverlayProblem.TimerStalled))
+            {
+                _timer.Stop();
+                _timer.Start();
+            }
+
+            if (problems.HasFlag(OverlayProblem.Transparent))
+                Opacity = 1;
+
+            // Re-showing makes the shell re-evaluate a window it hid or cloaked behind our back.
+            if (problems.HasFlag(OverlayProblem.Hidden) || problems.HasFlag(OverlayProblem.Cloaked))
+            {
+                Hide();
+                Show();
+            }
+
+            OverlayWindowProbe.BringToTopmost(Handle);
+            Invalidate();
+            Update();
+        }
+
+        // Click-through and never activated - independent of the layered/opacity machinery, so
+        // baking it into CreateParams from the start doesn't disturb the colour-key setup.
         protected override CreateParams CreateParams
         {
             get
             {
                 var cp = base.CreateParams;
-                cp.ExStyle |= WS_EX_TRANSPARENT;
+                cp.ExStyle |= WS_EX_TRANSPARENT | WS_EX_NOACTIVATE;
                 return cp;
             }
         }
@@ -87,6 +177,7 @@
             if (!_poller.KeyboardMode)
                 return;
 
+            _keyboardPaintCount++;
             var layout = ControllerPoller.KeyboardLayout;
             int layer = _poller.KeyboardLayer;
             int hot = _poller.CurrentSector;
@@ -148,7 +239,7 @@
             g.DrawString(legend, _legendFont, _textBrush, x, y);
         }
 
-        // Win32 interop for click-through
         private const int WS_EX_TRANSPARENT = 0x00000020;
+        private const int WS_EX_NOACTIVATE = 0x08000000;
     }
 }
