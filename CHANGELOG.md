@@ -25,6 +25,7 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - "Use HidHide" never hid Xbox controllers: SDL's XInput backend reports a placeholder path
   (`XInput#0`) instead of a real device path. Physical XInput controllers are now located
   directly; ViGEmBus's own virtual pad is left visible.
+- Running the test suite appended warnings to the real `app.log`; tests now log to a temp file.
 - The USER-object safety cutoff turned "Use HidHide" off silently; it now shows a notification.
 - The on-screen keyboard could stop appearing after the app had run for many hours, while the
   controller kept working. Each time it opens, it now checks that it's actually visible (painted,
