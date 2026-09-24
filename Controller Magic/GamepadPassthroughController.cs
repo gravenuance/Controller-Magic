@@ -33,7 +33,11 @@ internal sealed class GamepadPassthroughController : IDisposable
     // tick, so it needs to be a single primitive to be safely volatile.
     private volatile bool _driversReady;
     private bool _startupResetDone;
-    private PassthroughTarget _applied;
+    // What's really in place, never what was asked for: a failed connect or a dropped virtual pad
+    // has to show up here, or the real pad stays hidden with nothing replacing it.
+    private volatile bool _cloaked;
+    private volatile bool _virtualPadExpected;
+    private readonly VirtualPadRetry _virtualPadRetry;
     // Only the poll thread starts transitions, and only once the previous one has finished.
     private Task _transition = Task.CompletedTask;
     private Connection? _connection;
@@ -68,6 +72,7 @@ internal sealed class GamepadPassthroughController : IDisposable
         _settingOn = settingOn;
         _runInBackground = runInBackground;
         _detectDrivers = detectDrivers;
+        _virtualPadRetry = new VirtualPadRetry(clock);
     }
 
     // Pure policy, isolated from driver I/O so it's directly testable: the feature only ever
@@ -78,16 +83,21 @@ internal sealed class GamepadPassthroughController : IDisposable
 
     // Hiding doesn't wait for a controller: HidHide only filters opens made after it starts, so a
     // pad has to arrive already hidden or Steam and the system grab it first.
+    // A pad that can't get a virtual replacement right now stays visible rather than vanishing.
     internal static PassthroughTarget ComputeTarget(
         bool settingOn, bool driversReady, bool fullscreenSuspended,
-        bool padConnected, bool connectionKnown, bool connectionBlocked)
+        bool padConnected, bool connectionKnown, bool connectionBlocked, bool virtualPadUnavailable)
     {
         if (!ComputeShouldBeActive(settingOn, driversReady, fullscreenSuspended))
             return default;
 
+        bool virtualPadWanted = padConnected && connectionKnown;
+        if (virtualPadWanted && virtualPadUnavailable)
+            return default;
+
         return new PassthroughTarget(
             Hiding: true,
-            VirtualPad: padConnected && connectionKnown,
+            VirtualPad: virtualPadWanted,
             BlockConnection: connectionKnown && !connectionBlocked);
     }
 
@@ -131,19 +141,10 @@ internal sealed class GamepadPassthroughController : IDisposable
 
         TrackConnection(deviceIdentity, connectionSerial);
 
-        var target = ComputeTarget(
-            _settingOn(), _driversReady, _fullscreenSuspended,
-            gotPad, _connection != null, _connection?.BlockAttempted ?? false);
+        if (_transition.IsCompleted)
+            StartTransitionIfNeeded(gotPad);
 
-        if (target != _applied && _transition.IsCompleted)
-        {
-            var previous = _applied;
-            var toBlock = target.BlockConnection ? _connection : null;
-            _applied = target with { BlockConnection = false };
-            _transition = _runInBackground(() => ApplyTransition(previous, target, toBlock));
-        }
-
-        if (_applied.VirtualPad && gotPad)
+        if (gotPad && _vigem.IsConnected)
             _vigem.SubmitReport(pad, includeStickAndDpad: false);
 
         // Runs every tick regardless of active state, not just while submitting reports: a real
@@ -156,12 +157,46 @@ internal sealed class GamepadPassthroughController : IDisposable
         CheckResourceSafety();
     }
 
+    private void StartTransitionIfNeeded(bool gotPad)
+    {
+        NoteVirtualPadDropped();
+
+        bool settingOn = _settingOn();
+        bool driversReady = _driversReady;
+        bool fullscreenSuspended = _fullscreenSuspended;
+        if (!ComputeShouldBeActive(settingOn, driversReady, fullscreenSuspended))
+            _virtualPadRetry.Reset();
+
+        var target = ComputeTarget(
+            settingOn, driversReady, fullscreenSuspended,
+            gotPad, _connection != null, _connection?.BlockAttempted ?? false,
+            virtualPadUnavailable: !_virtualPadRetry.CanAttempt);
+        var current = new PassthroughTarget(_cloaked, _vigem.IsConnected, BlockConnection: false);
+        if (target == current)
+            return;
+
+        var toBlock = target.BlockConnection ? _connection : null;
+        _transition = _runInBackground(() => ApplyTransition(current, target, toBlock));
+    }
+
+    // A failed submit disconnects the bridge on its own; counting that as a failed attempt paces a
+    // pad that keeps failing instead of reconnecting it every tick.
+    private void NoteVirtualPadDropped()
+    {
+        if (!_virtualPadExpected || _vigem.IsConnected)
+            return;
+
+        _virtualPadExpected = false;
+        RecordConnectFailure("dropped");
+    }
+
     private void TrackConnection(PhysicalDeviceIdentity? deviceIdentity, int connectionSerial)
     {
         if (deviceIdentity is not { IsValid: true } device || connectionSerial == _connection?.Serial)
             return;
 
-        _connection = new Connection(connectionSerial, device, cloakedAtArrival: _applied.Hiding);
+        _connection = new Connection(connectionSerial, device, cloakedAtArrival: _cloaked);
+        _virtualPadRetry.Reset();
     }
 
     private void CheckResourceSafety()
@@ -185,7 +220,7 @@ internal sealed class GamepadPassthroughController : IDisposable
             return;
         _thresholdLogged = true;
 
-        if (!_applied.Hiding)
+        if (!_cloaked)
         {
             AppLog.Default.Error(
                 $"GamepadPassthroughController: USER object count ({userObjects}) crossed the safety threshold " +
@@ -205,27 +240,72 @@ internal sealed class GamepadPassthroughController : IDisposable
         NoticeRaised?.Invoke(PassthroughNotice.TurnedOffBySafetyCutoff);
     }
 
-    // Blocks before cloaking so a newly hidden device never has an unfiltered moment. Turning off
-    // only flips the cloak flag - allow-list and block-list entries stay so re-activating is instant.
-    private void ApplyTransition(PassthroughTarget previous, PassthroughTarget target, Connection? toBlock)
+    // Blocks before cloaking so a newly hidden device never has an unfiltered moment, and connects
+    // the virtual pad before cloaking so a failed connect never leaves the real one hidden. Turning
+    // off only flips the cloak flag - allow-list and block-list entries stay so re-activating is instant.
+    private void ApplyTransition(PassthroughTarget current, PassthroughTarget target, Connection? toBlock)
     {
-        ResourceUsageMonitor.LogSnapshot($"before-transition {previous} -> {target}");
+        try
+        {
+            ResourceUsageMonitor.LogSnapshot($"before-transition {current} -> {target}");
 
-        if (target.Hiding && !previous.Hiding)
-            _hidHide.EnsureAppAllowListed();
+            if (target.Hiding && !current.Hiding)
+                _hidHide.EnsureAppAllowListed();
 
-        if (toBlock != null)
-            BlockConnection(toBlock);
+            if (toBlock != null)
+                BlockConnection(toBlock);
 
-        if (target.Hiding != previous.Hiding)
-            _hidHide.SetCloakingEnabled(target.Hiding);
+            bool virtualPadReady = !target.VirtualPad || current.VirtualPad || ConnectVirtualPad();
+            SetCloaked(target.Hiding && virtualPadReady);
 
-        if (target.VirtualPad && !previous.VirtualPad)
-            _vigem.TryConnect();
-        else if (!target.VirtualPad && previous.VirtualPad)
-            _vigem.Disconnect();
+            if (!target.VirtualPad && current.VirtualPad)
+                DisconnectVirtualPad();
 
-        ResourceUsageMonitor.LogSnapshot("after-transition");
+            ResourceUsageMonitor.LogSnapshot("after-transition");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Default.Warning($"GamepadPassthroughController: transition {current} -> {target} failed", ex);
+        }
+    }
+
+    private bool ConnectVirtualPad()
+    {
+        if (_vigem.TryConnect())
+        {
+            _virtualPadRetry.RecordConnected();
+            _virtualPadExpected = true;
+            return true;
+        }
+
+        RecordConnectFailure("failed to connect");
+        return false;
+    }
+
+    private void RecordConnectFailure(string what)
+    {
+        int failures = _virtualPadRetry.RecordFailure();
+        string next = failures < VirtualPadRetry.MaxAttempts
+            ? "retrying shortly"
+            : "giving up until the controller reconnects";
+        AppLog.Default.Warning(
+            $"GamepadPassthroughController: virtual pad {what} ({failures} of {VirtualPadRetry.MaxAttempts}); " +
+            $"real controller left visible, {next}");
+    }
+
+    private void DisconnectVirtualPad()
+    {
+        _virtualPadExpected = false;
+        _vigem.Disconnect();
+    }
+
+    private void SetCloaked(bool cloaked)
+    {
+        if (cloaked == _cloaked)
+            return;
+
+        _hidHide.SetCloakingEnabled(cloaked);
+        _cloaked = cloaked;
     }
 
     private void BlockConnection(Connection connection)

@@ -33,6 +33,118 @@ public class GamepadPassthroughControllerTests
         Assert.True(harness.HidHide.Cloaked);
         Assert.True(harness.VirtualPad.IsConnected);
     }
+
+    [Fact]
+    public void Tick_VirtualPadFailsToConnect_RealPadIsNotLeftHidden()
+    {
+        var harness = new PassthroughHarness();
+        harness.VirtualPad.ConnectSucceeds = false;
+        harness.TickWithoutPad();
+        Assert.True(harness.HidHide.Cloaked);
+
+        harness.TickWithPad();
+        harness.TickWithPad();
+
+        Assert.False(harness.HidHide.Cloaked);
+        Assert.False(harness.VirtualPad.IsConnected);
+    }
+
+    [Fact]
+    public void Tick_VirtualPadFailedOnce_RetriesAfterABackoffAndHidesOnceItConnects()
+    {
+        var harness = new PassthroughHarness();
+        harness.VirtualPad.ConnectSucceeds = false;
+        harness.TickWithPad();
+        harness.VirtualPad.ConnectSucceeds = true;
+
+        harness.TickWithPad();
+        Assert.Equal(1, harness.VirtualPad.ConnectAttempts);
+
+        harness.Clock.Advance(TimeSpan.FromSeconds(1));
+        harness.TickWithPad();
+
+        Assert.Equal(2, harness.VirtualPad.ConnectAttempts);
+        Assert.True(harness.VirtualPad.IsConnected);
+        Assert.True(harness.HidHide.Cloaked);
+    }
+
+    [Fact]
+    public void Tick_VirtualPadDropsWhileInUse_UncloaksThenReconnectsAfterABackoff()
+    {
+        var harness = new PassthroughHarness();
+        harness.TickWithPad();
+
+        harness.VirtualPad.DropConnection();
+        harness.TickWithPad();
+        harness.TickWithPad();
+        Assert.False(harness.HidHide.Cloaked);
+
+        harness.Clock.Advance(TimeSpan.FromSeconds(1));
+        harness.TickWithPad();
+
+        Assert.Equal(2, harness.VirtualPad.ConnectAttempts);
+        Assert.True(harness.VirtualPad.IsConnected);
+        Assert.True(harness.HidHide.Cloaked);
+    }
+
+    [Fact]
+    public void Tick_VirtualPadDropsRightAfterEveryConnect_StillGivesUpAfterMaxAttempts()
+    {
+        var harness = new PassthroughHarness();
+
+        for (int i = 0; i < 20; i++)
+        {
+            harness.TickWithPad();
+            harness.VirtualPad.DropConnection();
+            harness.TickWithPad();
+            harness.Clock.Advance(TimeSpan.FromSeconds(20));
+        }
+
+        Assert.Equal(VirtualPadRetry.MaxAttempts, harness.VirtualPad.ConnectAttempts);
+    }
+
+    [Fact]
+    public void Tick_VirtualPadDropsAfterStayingUp_StartsTheBackoffAfresh()
+    {
+        var harness = new PassthroughHarness();
+        for (int i = 0; i < 3; i++)
+        {
+            harness.TickWithPad();
+            harness.VirtualPad.DropConnection();
+            harness.TickWithPad();
+            harness.Clock.Advance(TimeSpan.FromSeconds(20));
+        }
+
+        harness.TickWithPad();
+        harness.Clock.Advance(TimeSpan.FromMinutes(5));
+        harness.VirtualPad.DropConnection();
+        harness.TickWithPad();
+        harness.Clock.Advance(TimeSpan.FromSeconds(1));
+        harness.TickWithPad();
+
+        Assert.Equal(5, harness.VirtualPad.ConnectAttempts);
+        Assert.True(harness.VirtualPad.IsConnected);
+    }
+
+    [Fact]
+    public void Tick_VirtualPadKeepsFailing_GivesUpUntilTheControllerReconnects()
+    {
+        var harness = new PassthroughHarness();
+        harness.VirtualPad.ConnectSucceeds = false;
+
+        for (int i = 0; i < 20; i++)
+        {
+            harness.TickWithPad();
+            harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        Assert.Equal(VirtualPadRetry.MaxAttempts, harness.VirtualPad.ConnectAttempts);
+        Assert.False(harness.HidHide.Cloaked);
+
+        harness.Controller.Tick(default, gotPad: true, PassthroughHarness.Device, PassthroughHarness.Serial + 1);
+
+        Assert.Equal(VirtualPadRetry.MaxAttempts + 1, harness.VirtualPad.ConnectAttempts);
+    }
 }
 
 public class PassthroughTargetTests
@@ -42,7 +154,8 @@ public class PassthroughTargetTests
     {
         var target = GamepadPassthroughController.ComputeTarget(
             settingOn: true, driversReady: true, fullscreenSuspended: false,
-            padConnected: false, connectionKnown: false, connectionBlocked: false);
+            padConnected: false, connectionKnown: false, connectionBlocked: false,
+            virtualPadUnavailable: false);
 
         Assert.True(target.Hiding);
         Assert.False(target.VirtualPad);
@@ -54,7 +167,8 @@ public class PassthroughTargetTests
     {
         var target = GamepadPassthroughController.ComputeTarget(
             settingOn: true, driversReady: true, fullscreenSuspended: false,
-            padConnected: true, connectionKnown: true, connectionBlocked: false);
+            padConnected: true, connectionKnown: true, connectionBlocked: false,
+            virtualPadUnavailable: false);
 
         Assert.Equal(new PassthroughTarget(Hiding: true, VirtualPad: true, BlockConnection: true), target);
     }
@@ -64,7 +178,8 @@ public class PassthroughTargetTests
     {
         var target = GamepadPassthroughController.ComputeTarget(
             settingOn: true, driversReady: true, fullscreenSuspended: false,
-            padConnected: true, connectionKnown: true, connectionBlocked: true);
+            padConnected: true, connectionKnown: true, connectionBlocked: true,
+            virtualPadUnavailable: false);
 
         Assert.False(target.BlockConnection);
     }
@@ -77,7 +192,8 @@ public class PassthroughTargetTests
     {
         var target = GamepadPassthroughController.ComputeTarget(
             settingOn, driversReady, fullscreenSuspended,
-            padConnected: true, connectionKnown: true, connectionBlocked: false);
+            padConnected: true, connectionKnown: true, connectionBlocked: false,
+            virtualPadUnavailable: false);
 
         Assert.Equal(default, target);
     }
@@ -87,10 +203,33 @@ public class PassthroughTargetTests
     {
         var target = GamepadPassthroughController.ComputeTarget(
             settingOn: true, driversReady: true, fullscreenSuspended: false,
-            padConnected: true, connectionKnown: false, connectionBlocked: false);
+            padConnected: true, connectionKnown: false, connectionBlocked: false,
+            virtualPadUnavailable: false);
 
         Assert.True(target.Hiding);
         Assert.False(target.VirtualPad);
+    }
+
+    [Fact]
+    public void ComputeTarget_VirtualPadUnavailableForAConnectedPad_LeavesTheRealPadVisible()
+    {
+        var target = GamepadPassthroughController.ComputeTarget(
+            settingOn: true, driversReady: true, fullscreenSuspended: false,
+            padConnected: true, connectionKnown: true, connectionBlocked: false,
+            virtualPadUnavailable: true);
+
+        Assert.Equal(default, target);
+    }
+
+    [Fact]
+    public void ComputeTarget_VirtualPadUnavailableWithNoPad_StillHidesSoAnArrivingPadStartsHidden()
+    {
+        var target = GamepadPassthroughController.ComputeTarget(
+            settingOn: true, driversReady: true, fullscreenSuspended: false,
+            padConnected: false, connectionKnown: false, connectionBlocked: false,
+            virtualPadUnavailable: true);
+
+        Assert.True(target.Hiding);
     }
 
     [Theory]
