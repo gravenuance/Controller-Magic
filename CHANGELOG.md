@@ -8,6 +8,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-24
+
 ### Added
 - Touchpad mouse (DualSense, DualShock 4): slide to move the cursor, tap to left-click (tap twice
   to double-click), hold a finger still to right-click, and press the pad down to hold the left
