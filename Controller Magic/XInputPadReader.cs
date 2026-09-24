@@ -18,21 +18,23 @@ internal static class XInputPadReader
     // that returned true. Exists so the UI can show which XInput slot the controller claimed.
     public static int LastSlot => _lastSlot;
 
-    // excludeSlot is the XInput user index a ViGEm virtual pad this same process just created
-    // landed on, if any. XInput's public API exposes no device identity at all - just a slot
-    // number - so without this, a virtual Xbox 360 controller this app creates for itself is
+    private const int SlotCount = 4;
+
+    // excludedSlots is a bit per XInput user index that may hold this process's own ViGEm virtual
+    // pad. XInput's public API exposes no device identity at all - just a slot number - so
+    // without this, a virtual Xbox 360 controller this app creates for itself is
     // indistinguishable from a real one, and slot-scanning can end up reading back its own
     // (deliberately neutered) output as if it were fresh input instead of the real controller.
-    public static bool TryReadAny(out PadState pad, int? excludeSlot = null)
+    public static bool TryReadAny(out PadState pad, int excludedSlots = 0)
     {
         pad = default;
 
-        if (_lastSlot != excludeSlot && TryRead(_lastSlot, out pad))
+        if (!IsExcluded(_lastSlot, excludedSlots) && TryRead(_lastSlot, out pad))
             return true;
 
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < SlotCount; i++)
         {
-            if (i == _lastSlot || i == excludeSlot)
+            if (i == _lastSlot || IsExcluded(i, excludedSlots))
                 continue;
 
             if (TryRead(i, out pad))
@@ -44,6 +46,21 @@ internal static class XInputPadReader
 
         return false;
     }
+
+    // A bit per user index with a controller in it right now.
+    public static int ConnectedSlots()
+    {
+        int slots = 0;
+        for (int i = 0; i < SlotCount; i++)
+        {
+            if (XInput.GetState((uint)i, out _))
+                slots |= 1 << i;
+        }
+
+        return slots;
+    }
+
+    private static bool IsExcluded(int slot, int excludedSlots) => (excludedSlots & (1 << slot)) != 0;
 
     public static bool TryRead(int userIndex, out PadState pad)
     {

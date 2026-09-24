@@ -21,6 +21,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   app closed, and a rare race between sending input and switching could crash the app.
 - Removing the virtual Xbox pad could crash the app later during cleanup, and a failed attempt to
   create one leaked its driver handles.
+- Right after "Use HidHide" plugged in its virtual Xbox pad, the app could briefly read that pad
+  back as the real controller, freezing or latching input from a DualSense or other non-Xbox pad.
 
 ## [1.8.0] - 2026-09-24
 

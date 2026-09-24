@@ -26,7 +26,7 @@ internal sealed class FakeVirtualPad : IVirtualPad
 {
     public bool ConnectSucceeds { get; set; } = true;
     public bool IsConnected { get; private set; }
-    public int? UserIndex => null;
+    public int ExcludedXInputSlots => 0;
     public int ConnectAttempts { get; private set; }
     public int ReportsSubmitted { get; private set; }
 

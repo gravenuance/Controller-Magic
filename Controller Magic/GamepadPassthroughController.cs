@@ -125,10 +125,10 @@ internal sealed class GamepadPassthroughController : IDisposable
 
     public void SetFullscreenSuspended(bool suspended) => _fullscreenSuspended = suspended;
 
-    // The XInput slot the virtual pad currently occupies, if connected - ControllerPoller feeds
-    // this to XInputPadReader so its slot-scanning never reads this app's own virtual pad back as
-    // if it were a real controller.
-    public int? VirtualPadUserIndex => _vigem.UserIndex;
+    // The XInput slots the virtual pad may occupy, a bit each - ControllerPoller feeds this to
+    // XInputPadReader so its slot-scanning never reads this app's own virtual pad back as if it
+    // were a real controller.
+    public int VirtualPadXInputSlots => _vigem.ExcludedXInputSlots;
 
     public void Tick(PadState pad, bool gotPad, PhysicalDeviceIdentity? deviceIdentity, int connectionSerial)
     {

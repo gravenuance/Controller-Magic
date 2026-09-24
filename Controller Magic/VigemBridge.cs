@@ -10,7 +10,7 @@ namespace ControllerMagic;
 internal interface IVirtualPad : IDisposable
 {
     bool IsConnected { get; }
-    int? UserIndex { get; }
+    int ExcludedXInputSlots { get; }
     bool TryConnect();
     void SubmitReport(PadState pad, bool includeStickAndDpad = true);
     void Disconnect();
@@ -21,52 +21,75 @@ internal interface IVirtualPad : IDisposable
 // report per SetButtonState/SetAxisValue call.
 internal sealed class VigemBridge : IVirtualPad
 {
-    // Reports and UserIndex come from the poll thread while connects and disconnects come from a
-    // transition's pool thread; the gate keeps a handle from being freed while the other uses it.
+    private const int AllXInputSlots = 0b1111;
+    private static readonly TimeSpan UserIndexQueryInterval = TimeSpan.FromMilliseconds(100);
+
+    // Reports and the slot query come from the poll thread while connects and disconnects come
+    // from a transition's pool thread; the gate keeps a handle from being freed while in use.
     private readonly Lock _gate = new();
     private readonly Func<IDisposable> _createClient;
     private readonly Func<IDisposable, IXbox360Controller> _createController;
+    private readonly Func<int> _connectedXInputSlots;
+    private readonly TimeProvider _clock;
     private IDisposable? _client;
     private volatile IXbox360Controller? _controller;
+    private int _slotsInUseBeforeConnect;
+    private int? _userIndex;
+    private DateTimeOffset _nextUserIndexQueryUtc;
 
     public VigemBridge()
-        : this(() => new ViGEmClient(), client => ((ViGEmClient)client).CreateXbox360Controller())
+        : this(() => new ViGEmClient(), client => ((ViGEmClient)client).CreateXbox360Controller(),
+            XInputPadReader.ConnectedSlots, TimeProvider.System)
     {
     }
 
-    internal VigemBridge(Func<IDisposable> createClient, Func<IDisposable, IXbox360Controller> createController)
+    internal VigemBridge(
+        Func<IDisposable> createClient, Func<IDisposable, IXbox360Controller> createController,
+        Func<int> connectedXInputSlots, TimeProvider clock)
     {
         _createClient = createClient;
         _createController = createController;
+        _connectedXInputSlots = connectedXInputSlots;
+        _clock = clock;
     }
 
     public bool IsConnected => _controller != null;
 
-    // The XInput slot ViGEmBus assigned this virtual pad to, once connected - null when not
-    // connected, or when connected but ViGEmBus hasn't reported the slot back yet (confirmed from
-    // ViGEm.NET's own source: IXbox360Controller.UserIndex's getter throws
-    // Xbox360UserIndexNotReportedException until that report arrives - it's set inside the same
-    // feedback-notification callback used for rumble/LED state, not synchronously by Connect()).
-    // This is queried every poll tick, so treating "not yet known" as an exception to catch here -
-    // rather than letting it escape unguarded - is not optional.
-    public int? UserIndex
+    // XInput slots that may hold this virtual pad, as a bit per slot; read every poll tick.
+    // ViGEmBus reports the slot some time after Connect() (IXbox360Controller.UserIndex throws
+    // Xbox360UserIndexNotReportedException until then), so until it does, every slot that was free
+    // before connecting counts - otherwise XInput reads this app's own pad back as the real one.
+    // The slot is asked for at a low rate and kept once known, since the ask throws until then.
+    public int ExcludedXInputSlots
     {
         get
         {
             lock (_gate)
             {
                 if (_controller == null)
-                    return null;
+                    return 0;
 
-                try
+                if (_userIndex is null && _clock.GetUtcNow() >= _nextUserIndexQueryUtc)
                 {
-                    return _controller.UserIndex;
+                    _userIndex = QueryUserIndex(_controller);
+                    _nextUserIndexQueryUtc = _clock.GetUtcNow() + UserIndexQueryInterval;
                 }
-                catch (Xbox360UserIndexNotReportedException)
-                {
-                    return null;
-                }
+
+                return _userIndex is int slot ? 1 << slot : ~_slotsInUseBeforeConnect & AllXInputSlots;
             }
+        }
+    }
+
+    private static int? QueryUserIndex(IXbox360Controller controller)
+    {
+        try
+        {
+            int slot = controller.UserIndex;
+            return slot is >= 0 and <= 3 ? slot : null;
+        }
+        catch (Xbox360UserIndexNotReportedException)
+        {
+            return null;
         }
     }
 
@@ -77,8 +100,10 @@ internal sealed class VigemBridge : IVirtualPad
 
         IDisposable? client = null;
         IXbox360Controller? controller = null;
+        int slotsInUseBeforeConnect;
         try
         {
+            slotsInUseBeforeConnect = _connectedXInputSlots();
             client = _createClient();
             controller = _createController(client);
             controller.AutoSubmitReport = false;
@@ -102,6 +127,9 @@ internal sealed class VigemBridge : IVirtualPad
         {
             _client = client;
             _controller = controller;
+            _slotsInUseBeforeConnect = slotsInUseBeforeConnect;
+            _userIndex = null;
+            _nextUserIndexQueryUtc = DateTimeOffset.MinValue;
         }
 
         return true;

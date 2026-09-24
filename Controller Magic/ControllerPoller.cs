@@ -509,7 +509,7 @@ namespace ControllerMagic
                     sdlPadReader.PumpEvents();
                     sdlPadReader.SetPlayerLights(ControllerLights.PlayerLightsFor(sdlPadReader.Battery));
 
-                    PadSource source = XInputPadReader.TryReadAny(out var pad, _passthrough.VirtualPadUserIndex) ? PadSource.XInput
+                    PadSource source = XInputPadReader.TryReadAny(out var pad, _passthrough.VirtualPadXInputSlots) ? PadSource.XInput
                         : sdlPadReader.TryGetLatest(out pad) ? PadSource.Sdl
                         : PadSource.None;
                     bool gotPad = source != PadSource.None;
