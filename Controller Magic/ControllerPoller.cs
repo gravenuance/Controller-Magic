@@ -901,16 +901,19 @@ namespace ControllerMagic
                 return;
             }
 
-            if (pad.TouchActive && MapTouchToWheel(pad.TouchX, pad.TouchY, _keyboardLayer) is { } touch)
+            bool typePressed = A_pressed || WasPressed(buttons, PadButtons.TouchpadClick);
+            int sector = GetSector(pad.LeftThumbX, pad.LeftThumbY);
+            var touch = pad.TouchActive ? MapTouchToWheel(pad.TouchX, pad.TouchY, _keyboardLayer) : null;
+
+            if (TouchDrivesWheel(sector, touch))
             {
-                _currentSector = touch.Sector;
-                _slotIndex = touch.Ring;
-                if (A_pressed || WasPressed(buttons, PadButtons.TouchpadClick))
-                    EmitDaisywheelKey(_keyboardLayer, touch.Sector, touch.Ring);
+                var selection = touch!.Value;
+                _currentSector = selection.Sector;
+                _slotIndex = selection.Ring;
+                if (typePressed)
+                    EmitDaisywheelKey(_keyboardLayer, selection.Sector, selection.Ring);
                 return;
             }
-
-            int sector = GetSector(pad.LeftThumbX, pad.LeftThumbY);
 
             if (sector < 0)
                 return;
@@ -924,11 +927,13 @@ namespace ControllerMagic
             if (LB_pressed)
                 _slotIndex = (_slotIndex - 1 + count) % count;
 
-            if (A_pressed)
-            {
+            if (typePressed)
                 EmitDaisywheelKey(_keyboardLayer, sector, _slotIndex);
-            }
         }
+
+        // The stick wins while pushed, so a finger resting on the pad only to press it can't move the selection.
+        internal static bool TouchDrivesWheel(int stickSector, WheelSelection? touch) =>
+            stickSector < 0 && touch is not null;
 
         private static void EmitDaisywheelKey(int layer, int sector, int index)
         {

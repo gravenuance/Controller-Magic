@@ -63,4 +63,22 @@ public class TouchWheelTests
             }
         }
     }
+
+    [Fact]
+    public void TouchDrivesWheel_StickCentredAndFingerOnALetter_TouchSelects()
+    {
+        Assert.True(ControllerPoller.TouchDrivesWheel(stickSector: -1, touch: new WheelSelection(0, 1)));
+    }
+
+    [Fact]
+    public void TouchDrivesWheel_StickPushed_StickKeepsTheSelectionForAPadPress()
+    {
+        Assert.False(ControllerPoller.TouchDrivesWheel(stickSector: 3, touch: new WheelSelection(0, 1)));
+    }
+
+    [Fact]
+    public void TouchDrivesWheel_FingerInTheCentre_LeavesItToTheStick()
+    {
+        Assert.False(ControllerPoller.TouchDrivesWheel(stickSector: -1, touch: null));
+    }
 }

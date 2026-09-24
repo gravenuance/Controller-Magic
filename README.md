@@ -18,6 +18,7 @@ remote outside of fullscreen games — a background tray app, not a window you k
   entirely by the controller: left stick picks a direction, the shoulder buttons and triggers
   cycle through letters and layers, A commits. On a DualSense or DualShock 4 the touchpad drives
   the wheel too: slide a finger out from the centre to pick a letter, click the pad to type it.
+  Clicking the pad also types the letter picked with the stick, like A.
 - **Fullscreen-aware** — controller input is normally suppressed while a game has focus (so it
   doesn't fight with in-game controller support), except for an allowed list of apps (browsers,
   media players, Steam, Explorer) where mouse/keyboard control keeps working.

@@ -13,6 +13,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   to double-click), hold a finger still to right-click, and press the pad down to hold the left
   button for dragging. Speed is set in Settings under "Touchpad speed". In the on-screen keyboard
   the touchpad still drives the wheel.
+- On-screen keyboard: clicking the touchpad types the letter picked with the stick, like A. While
+  the stick is pushed it keeps the selection, so the finger pressing the pad can't move it.
 - Bluetooth range guard (DualSense, DualShock 4, Switch Pro): when the controller stops sending
   reports, typically from being too far away, it is treated as centred with every button released
   instead of repeating its last state. The cursor no longer drifts and a held button no longer
