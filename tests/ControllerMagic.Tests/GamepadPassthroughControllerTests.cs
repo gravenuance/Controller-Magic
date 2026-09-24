@@ -21,6 +21,18 @@ public class GamepadPassthroughControllerTests
 
         Assert.Equal(expected, actual);
     }
+
+    [Fact]
+    public void Tick_SettingOnWithPad_BlocksCloaksAndConnectsTheVirtualPad()
+    {
+        var harness = new PassthroughHarness();
+
+        harness.TickWithPad();
+
+        Assert.Equal([PassthroughHarness.Device.InterfacePath], harness.HidHide.BlockedPaths);
+        Assert.True(harness.HidHide.Cloaked);
+        Assert.True(harness.VirtualPad.IsConnected);
+    }
 }
 
 public class PassthroughTargetTests

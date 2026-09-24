@@ -238,7 +238,17 @@ namespace ControllerMagic
         // a virtual controller as well when AppSettings.Instance.UseHidHide is on and the drivers
         // are ready. See GamepadPassthroughController's own comment for why the Guide button can
         // never reach that virtual pad.
-        private readonly GamepadPassthroughController _passthrough = new();
+        private readonly GamepadPassthroughController _passthrough;
+
+        public ControllerPoller()
+            : this(new GamepadPassthroughController())
+        {
+        }
+
+        internal ControllerPoller(GamepadPassthroughController passthrough)
+        {
+            _passthrough = passthrough;
+        }
 
         private const int SlowScrollIntervalMs = 200;
         private const int FastScrollIntervalMs = 20;

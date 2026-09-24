@@ -20,9 +20,12 @@ internal readonly record struct PassthroughTarget(bool Hiding, bool VirtualPad, 
 // gamepad-driven UI focus navigation.
 internal sealed class GamepadPassthroughController : IDisposable
 {
-    private readonly HidHideBridge _hidHide = new();
-    private readonly VigemBridge _vigem = new();
+    private readonly IHidHide _hidHide;
+    private readonly IVirtualPad _vigem;
     private readonly TimeProvider _clock;
+    private readonly Func<bool> _settingOn;
+    private readonly Func<Action, Task> _runInBackground;
+    private readonly Func<IHidHide, DriverStatus> _detectDrivers;
 
     private volatile bool _fullscreenSuspended;
     // volatile bool, not a DriverStatus struct field: written from background tasks (the first-
@@ -48,9 +51,22 @@ internal sealed class GamepadPassthroughController : IDisposable
     private const uint UserObjectSafetyThreshold = 5000;
     private bool _thresholdLogged;
 
-    public GamepadPassthroughController(TimeProvider? clock = null)
+    public GamepadPassthroughController()
+        : this(new HidHideBridge(), new VigemBridge(), TimeProvider.System,
+            () => AppSettings.Instance.UseHidHide, action => Task.Run(action), DriverDependency.Detect)
     {
-        _clock = clock ?? TimeProvider.System;
+    }
+
+    internal GamepadPassthroughController(
+        IHidHide hidHide, IVirtualPad virtualPad, TimeProvider clock,
+        Func<bool> settingOn, Func<Action, Task> runInBackground, Func<IHidHide, DriverStatus> detectDrivers)
+    {
+        _hidHide = hidHide;
+        _vigem = virtualPad;
+        _clock = clock;
+        _settingOn = settingOn;
+        _runInBackground = runInBackground;
+        _detectDrivers = detectDrivers;
     }
 
     // Pure policy, isolated from driver I/O so it's directly testable: the feature only ever
@@ -82,14 +98,14 @@ internal sealed class GamepadPassthroughController : IDisposable
     // right after a successful driver install - never on a timer.
     public void RefreshDriverStatus()
     {
-        var status = DriverDependency.Detect(_hidHide);
+        var status = _detectDrivers(_hidHide);
         _driversReady = status.HidHideInstalled && status.VigemInstalled;
     }
 
     // For Settings' toggle-enablement check: runs the same detection off the calling thread so a
     // UI-thread caller never blocks on it.
     public Task<DriverStatus> DetectDriverStatusAsync(CancellationToken ct = default) =>
-        Task.Run(() => DriverDependency.Detect(_hidHide), ct);
+        Task.Run(() => _detectDrivers(_hidHide), ct);
 
     public void SetFullscreenSuspended(bool suspended) => _fullscreenSuspended = suspended;
 
@@ -105,7 +121,7 @@ internal sealed class GamepadPassthroughController : IDisposable
             _startupResetDone = true;
             // Guaranteed crash/force-kill recovery: unconditionally clear cloaking left over from
             // a previous run that didn't exit cleanly, before evaluating current settings at all.
-            _ = Task.Run(() =>
+            _ = _runInBackground(() =>
             {
                 _hidHide.SetCloakingEnabled(false);
                 RefreshDriverStatus();
@@ -115,7 +131,7 @@ internal sealed class GamepadPassthroughController : IDisposable
         TrackConnection(deviceIdentity, connectionSerial);
 
         var target = ComputeTarget(
-            AppSettings.Instance.UseHidHide, _driversReady, _fullscreenSuspended,
+            _settingOn(), _driversReady, _fullscreenSuspended,
             gotPad, _connection != null, _connection?.BlockAttempted ?? false);
 
         if (target != _applied && Interlocked.CompareExchange(ref _transitioning, 1, 0) == 0)
@@ -123,7 +139,7 @@ internal sealed class GamepadPassthroughController : IDisposable
             var previous = _applied;
             var toBlock = target.BlockConnection ? _connection : null;
             _applied = target with { BlockConnection = false };
-            _ = Task.Run(() => ApplyTransition(previous, target, toBlock)).ContinueWith(
+            _ = _runInBackground(() => ApplyTransition(previous, target, toBlock)).ContinueWith(
                 _ => Volatile.Write(ref _transitioning, 0),
                 TaskScheduler.Default);
         }

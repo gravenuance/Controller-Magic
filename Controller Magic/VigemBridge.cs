@@ -9,7 +9,17 @@ namespace ControllerMagic;
 // Owns one virtual Xbox 360 controller for the lifetime of the "suppress Guide button" mode.
 // AutoSubmitReport is turned off so a whole PadState lands as one USB report instead of one
 // report per SetButtonState/SetAxisValue call.
-internal sealed class VigemBridge : IDisposable
+// The virtual pad operations passthrough needs, so its state machine can run against a fake in tests.
+internal interface IVirtualPad : IDisposable
+{
+    bool IsConnected { get; }
+    int? UserIndex { get; }
+    bool TryConnect();
+    void SubmitReport(PadState pad, bool includeStickAndDpad = true);
+    void Disconnect();
+}
+
+internal sealed class VigemBridge : IVirtualPad
 {
     private ViGEmClient? _client;
     private IXbox360Controller? _controller;

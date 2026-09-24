@@ -14,7 +14,16 @@ internal enum BlockResult
 // Thin wrapper around HidHide's control service: cloaks the physical controller from every
 // process except this app, so Xbox Game Bar and Steam never see a Guide-button press on it at
 // all - there's no config flag either exposes to disable that, so this is the only reliable fix.
-internal sealed class HidHideBridge
+// The HidHide operations passthrough needs, so its state machine can run against a fake in tests.
+internal interface IHidHide
+{
+    bool IsInstalled { get; }
+    void EnsureAppAllowListed();
+    BlockResult BlockDevice(string deviceInterfacePath);
+    void SetCloakingEnabled(bool enabled);
+}
+
+internal sealed class HidHideBridge : IHidHide
 {
     private readonly HidHideControlService _service = new();
 

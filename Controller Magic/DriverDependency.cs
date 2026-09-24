@@ -14,7 +14,7 @@ internal static class DriverDependency
     internal static bool ShouldToggleBeEnabled(DriverStatus status) =>
         (status.HidHideInstalled && status.VigemInstalled) || status.NetworkAvailable;
 
-    public static DriverStatus Detect(HidHideBridge hidHide) => new(
+    public static DriverStatus Detect(IHidHide hidHide) => new(
         HidHideInstalled: hidHide.IsInstalled,
         VigemInstalled: IsVigemBusInstalled(),
         NetworkAvailable: IsNetworkAvailable());
