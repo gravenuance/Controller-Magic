@@ -45,6 +45,9 @@ namespace ControllerMagic
         // speed quickly. 0 disables the ramp (speed is driven by deflection alone, as before).
         public float StickRampSeconds { get; set; } = 0.35f;
 
+        // Cursor pixels for one finger slide across the full width of a DualSense/DualShock 4 touchpad.
+        public int TouchpadSpeed { get; set; } = 1200;
+
         // Process names (substring match) whose fullscreen windows still receive
         // controller input instead of being treated as a game and blocked.
         public List<string> WatchedProcessNames { get; set; } = new()

@@ -11,6 +11,9 @@ remote outside of fullscreen games — a background tray app, not a window you k
 - **Mouse control** — left stick moves the cursor, with tunable deadzone, sensitivity, an
   acceleration curve, and a hold-time speed ramp-up. Right stick scrolls (vertical and
   horizontal).
+- **Touchpad mouse** — on a DualSense or DualShock 4 the touchpad works like a laptop's: slide to
+  move the cursor, tap to click (tap twice to double-click), hold a finger still to right-click,
+  and press the pad down to hold the left button for dragging.
 - **On-screen keyboard** — click the left stick to bring up a radial daisywheel keyboard, driven
   entirely by the controller: left stick picks a direction, the shoulder buttons and triggers
   cycle through letters and layers, A commits. On a DualSense or DualShock 4 the touchpad drives
@@ -24,6 +27,9 @@ remote outside of fullscreen games — a background tray app, not a window you k
 - **Controller lights** — on a DualSense or DualShock 4, the lightbar shows orange for mouse
   control, green while the on-screen keyboard is open, and dim blue while standing down for a
   fullscreen game. On a DualSense the five LEDs under the touchpad show the battery level.
+- **Bluetooth range guard** — if a PlayStation or Switch Pro controller goes quiet (usually from
+  being too far away), it is treated as let go rather than stuck on its last input, so the cursor
+  doesn't drift off and no button stays held.
 - **Starts with Windows** — on by default, toggleable from Settings.
 - **Use HidHide** (optional, off by default) — stops the Guide/Home/Steam button from opening
   Xbox Game Bar or Steam's Big Picture mode, so it's free to be used for something else, and
@@ -36,7 +42,7 @@ remote outside of fullscreen games — a background tray app, not a window you k
   it off and on once when that's needed.
 - **Right-click (or double-click) the tray icon** for Settings, Restart, and Exit.
 
-Deadzones, sensitivity, the acceleration curve, ramp-up time, and both app/service lists are all
+Deadzones, sensitivity, the acceleration curve, ramp-up time, touchpad speed, and both app/service lists are all
 adjustable from Settings.
 
 ## Building

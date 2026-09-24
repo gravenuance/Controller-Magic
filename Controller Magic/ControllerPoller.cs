@@ -267,6 +267,7 @@ namespace ControllerMagic
 
         public static KeyEntry[,,] KeyboardLayout => Daisywheel;
         private static int StickDeadZone => AppSettings.Instance.StickDeadZone;
+        private static int TouchpadSpeed => AppSettings.Instance.TouchpadSpeed;
         private static int ScrollDeadZone => AppSettings.Instance.ScrollDeadZone;
         private static float StickSensitivity => AppSettings.Instance.StickSensitivity;
         private static int KeyboardDeadZone => AppSettings.Instance.KeyboardDeadZone;
@@ -510,11 +511,23 @@ namespace ControllerMagic
                         pad.Buttons = DebounceButtons(pad.Buttons);
 
                         if (_keyboardMode)
+                        {
                             ProcessKeyboardMode(pad);
+                        }
                         else
+                        {
                             ProcessSticks(pad);
+                            ProcessTouchpad(pad);
+                        }
 
                         ProcessButtons(pad);
+                    }
+                    else
+                    {
+                        // A pad lost mid-drag would otherwise leave the left mouse button held down.
+                        _touchpadMouse.Reset();
+                        _touchpadHoldsLeft = false;
+                        InputEmulator.SetLeftButtonState(false);
                     }
 
                     _passthrough.Tick(pad, gotPad, _connection.Identity, _connection.Serial);
@@ -627,6 +640,31 @@ namespace ControllerMagic
             HandleScroll(pad.RightThumbY, pad.RightThumbX);
         }
 
+        private readonly TouchpadMouse _touchpadMouse = new(TimeProvider.System);
+        private bool _touchpadHoldsLeft;
+
+        private void ProcessTouchpad(PadState pad)
+        {
+            var touch = _touchpadMouse.Update(
+                pad.TouchActive, pad.TouchX, pad.TouchY, (pad.Buttons & PadButtons.TouchpadClick) != 0, TouchpadSpeed);
+            _touchpadHoldsLeft = touch.HoldLeft;
+
+            if (touch.Dx != 0 || touch.Dy != 0)
+                InputEmulator.MoveMouse(touch.Dx, touch.Dy);
+
+            switch (touch.Click)
+            {
+                case TouchClick.Left:
+                    InputEmulator.LeftClick();
+                    break;
+                case TouchClick.Right:
+                    InputEmulator.RightClick();
+                    break;
+                case TouchClick.None:
+                    break;
+            }
+        }
+
         // Logistic (S-curve) ramp: near 0 right after the stick leaves the deadzone, crosses the
         // midpoint at rampSeconds/2, and is near 1 by rampSeconds - a quick tap stays slow and
         // precise, while a sustained push reaches full speed quickly rather than snapping there
@@ -725,8 +763,8 @@ namespace ControllerMagic
             const ushort VK_SHIFT = 0x10;
 
             // Driven directly off current state (not edges) so the button can never get stuck
-            // down if keyboard mode is toggled while A is still held.
-            InputEmulator.SetLeftButtonState(!_keyboardMode && A_down);
+            // down if keyboard mode is toggled while A or the touchpad is still held.
+            InputEmulator.SetLeftButtonState(!_keyboardMode && (A_down || _touchpadHoldsLeft));
 
             if (!_keyboardMode)
             {
@@ -790,6 +828,8 @@ namespace ControllerMagic
 
         private void ProcessKeyboardMode(PadState pad)
         {
+            _touchpadMouse.Reset();
+            _touchpadHoldsLeft = false;
             var buttons = pad.Buttons;
 
             const byte TriggerPressThreshold = 160;

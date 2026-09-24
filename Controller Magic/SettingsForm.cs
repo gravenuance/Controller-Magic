@@ -146,6 +146,13 @@ namespace ControllerMagic
                     double seconds = v / 100.0;
                     return ControllerPoller.ComputeHoldRamp(t * seconds, seconds);
                 });
+            AddSlider(
+                name: "Touchpad speed",
+                min: 300, max: 3000,
+                get: () => AppSettings.Instance.TouchpadSpeed,
+                set: v => AppSettings.Instance.TouchpadSpeed = v,
+                formatReadout: v => $"{v} px",
+                gaugeFraction: v => (v - 300) / 2700.0);
             EndCard();
 
             BeginCard("Other deadzones");

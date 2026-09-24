@@ -9,6 +9,10 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 ## [Unreleased]
 
 ### Added
+- Touchpad mouse (DualSense, DualShock 4): slide to move the cursor, tap to left-click (tap twice
+  to double-click), hold a finger still to right-click, and press the pad down to hold the left
+  button for dragging. Speed is set in Settings under "Touchpad speed". In the on-screen keyboard
+  the touchpad still drives the wheel.
 - Bluetooth range guard (DualSense, DualShock 4, Switch Pro): when the controller stops sending
   reports, typically from being too far away, it is treated as centred with every button released
   instead of repeating its last state. The cursor no longer drifts and a held button no longer
@@ -18,6 +22,7 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - A Bluetooth DualSense that reconnected while "Use HidHide" was on could be ignored until the app
   restarted: no lightbar change and no input. SDL had latched onto the app's own virtual Xbox pad,
   which then kept itself alive. SDL now leaves every XInput pad to the XInput reader.
+- Disconnecting the controller while holding A (or a drag) left the left mouse button held down.
 
 ## [1.7.0] - 2026-09-23
 
