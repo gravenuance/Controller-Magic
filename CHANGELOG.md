@@ -19,6 +19,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   virtual pad is retried a few times, and it's hidden again once the virtual pad is up.
 - Exiting while "Use HidHide" was switching the controller over could leave it hidden after the
   app closed, and a rare race between sending input and switching could crash the app.
+- Removing the virtual Xbox pad could crash the app later during cleanup, and a failed attempt to
+  create one leaked its driver handles.
 
 ## [1.8.0] - 2026-09-24
 

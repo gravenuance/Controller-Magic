@@ -6,9 +6,6 @@ using Nefarius.ViGEm.Client.Targets.Xbox360.Exceptions;
 
 namespace ControllerMagic;
 
-// Owns one virtual Xbox 360 controller for the lifetime of the "suppress Guide button" mode.
-// AutoSubmitReport is turned off so a whole PadState lands as one USB report instead of one
-// report per SetButtonState/SetAxisValue call.
 // The virtual pad operations passthrough needs, so its state machine can run against a fake in tests.
 internal interface IVirtualPad : IDisposable
 {
@@ -19,13 +16,29 @@ internal interface IVirtualPad : IDisposable
     void Disconnect();
 }
 
+// Owns one virtual Xbox 360 controller for the lifetime of the "suppress Guide button" mode.
+// AutoSubmitReport is turned off so a whole PadState lands as one USB report instead of one
+// report per SetButtonState/SetAxisValue call.
 internal sealed class VigemBridge : IVirtualPad
 {
     // Reports and UserIndex come from the poll thread while connects and disconnects come from a
     // transition's pool thread; the gate keeps a handle from being freed while the other uses it.
     private readonly Lock _gate = new();
-    private ViGEmClient? _client;
+    private readonly Func<IDisposable> _createClient;
+    private readonly Func<IDisposable, IXbox360Controller> _createController;
+    private IDisposable? _client;
     private volatile IXbox360Controller? _controller;
+
+    public VigemBridge()
+        : this(() => new ViGEmClient(), client => ((ViGEmClient)client).CreateXbox360Controller())
+    {
+    }
+
+    internal VigemBridge(Func<IDisposable> createClient, Func<IDisposable, IXbox360Controller> createController)
+    {
+        _createClient = createClient;
+        _createController = createController;
+    }
 
     public bool IsConnected => _controller != null;
 
@@ -62,34 +75,36 @@ internal sealed class VigemBridge : IVirtualPad
         if (_controller != null)
             return true;
 
+        IDisposable? client = null;
+        IXbox360Controller? controller = null;
         try
         {
-            var client = new ViGEmClient();
-            var controller = client.CreateXbox360Controller();
+            client = _createClient();
+            controller = _createController(client);
             controller.AutoSubmitReport = false;
             controller.Connect();
-
-            // Built outside the gate so a slow driver call never holds up the poll thread.
-            lock (_gate)
-            {
-                _client = client;
-                _controller = controller;
-            }
-
-            return true;
         }
         catch (VigemBusNotFoundException ex)
         {
             AppLog.Default.Warning("VigemBridge: ViGEmBus driver not found", ex);
-            Cleanup();
+            Release(controller, client, wasConnected: false);
             return false;
         }
         catch (Exception ex)
         {
             AppLog.Default.Warning("VigemBridge: failed to connect a virtual controller", ex);
-            Cleanup();
+            Release(controller, client, wasConnected: false);
             return false;
         }
+
+        // Built outside the gate so a slow driver call never holds up the poll thread.
+        lock (_gate)
+        {
+            _client = client;
+            _controller = controller;
+        }
+
+        return true;
     }
 
     // includeStickAndDpad=false keeps the left stick and D-pad neutral on the virtual pad while
@@ -132,7 +147,7 @@ internal sealed class VigemBridge : IVirtualPad
     // Detaches under the gate, then releases outside it: nothing else can reach the handles by then.
     private void Cleanup()
     {
-        ViGEmClient? client;
+        IDisposable? client;
         IXbox360Controller? controller;
         lock (_gate)
         {
@@ -142,13 +157,32 @@ internal sealed class VigemBridge : IVirtualPad
             _controller = null;
         }
 
+        Release(controller, client, wasConnected: controller != null);
+    }
+
+    // The target's finalizer frees it through its client, so it's disposed first, while the
+    // client is still alive; left to the finalizer it would run against a disposed client.
+    private static void Release(IXbox360Controller? controller, IDisposable? client, bool wasConnected)
+    {
+        if (wasConnected)
+        {
+            try
+            {
+                controller?.Disconnect();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Default.Warning("VigemBridge: error disconnecting the virtual controller", ex);
+            }
+        }
+
         try
         {
-            controller?.Disconnect();
+            (controller as IDisposable)?.Dispose();
         }
         catch (Exception ex)
         {
-            AppLog.Default.Warning("VigemBridge: error disconnecting the virtual controller", ex);
+            AppLog.Default.Warning("VigemBridge: error disposing the virtual controller", ex);
         }
 
         try
