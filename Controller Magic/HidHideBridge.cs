@@ -76,13 +76,9 @@ internal sealed class HidHideBridge
         }
     }
 
-    // SDL's XInput backend reports this literal instead of a real device path (SDL_xinputjoystick.c).
-    internal static bool IsXInputPlaceholderPath(string path) =>
-        path.StartsWith("XInput#", StringComparison.Ordinal);
-
     private static List<string> ResolveInstanceIds(string deviceInterfacePath)
     {
-        if (IsXInputPlaceholderPath(deviceInterfacePath))
+        if (PhysicalDeviceIdentity.IsXInputPlaceholderPath(deviceInterfacePath))
             return FindPhysicalXInputInstanceIds();
 
         string? instanceId = PnPDevice.GetInstanceIdFromInterfaceId(deviceInterfacePath);

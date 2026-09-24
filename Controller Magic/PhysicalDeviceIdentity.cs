@@ -9,5 +9,13 @@ namespace ControllerMagic;
 // share the same VID/PID but never the same interface path.
 internal readonly record struct PhysicalDeviceIdentity(string InterfacePath, ushort VendorId, ushort ProductId)
 {
+    // SDL's XInput backend reports this literal instead of a real device path (SDL_xinputjoystick.c).
+    private const string XInputPlaceholderPrefix = "XInput#";
+
     public bool IsValid => !string.IsNullOrEmpty(InterfacePath);
+
+    public static PhysicalDeviceIdentity ForXInputSlot(int slot) => new($"{XInputPlaceholderPrefix}{slot}", 0, 0);
+
+    public static bool IsXInputPlaceholderPath(string? path) =>
+        path != null && path.StartsWith(XInputPlaceholderPrefix, StringComparison.Ordinal);
 }

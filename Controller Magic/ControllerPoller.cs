@@ -496,11 +496,14 @@ namespace ControllerMagic
                     sdlPadReader.PumpEvents();
                     sdlPadReader.SetPlayerLights(ControllerLights.PlayerLightsFor(sdlPadReader.Battery));
 
-                    bool gotXInput = XInputPadReader.TryReadAny(out var pad, _passthrough.VirtualPadUserIndex);
-                    bool gotPad = gotXInput || sdlPadReader.TryGetLatest(out pad);
+                    PadSource source = XInputPadReader.TryReadAny(out var pad, _passthrough.VirtualPadUserIndex) ? PadSource.XInput
+                        : sdlPadReader.TryGetLatest(out pad) ? PadSource.Sdl
+                        : PadSource.None;
+                    bool gotPad = source != PadSource.None;
 
                     IsControllerConnected = gotPad;
-                    UpdateStatusText(gotXInput, gotPad);
+                    UpdateStatusText(source);
+                    _connection.Observe(source, XInputPadReader.LastSlot, sdlPadReader.CurrentDeviceIdentity, sdlPadReader.ConnectionSerial);
 
                     if (gotPad)
                     {
@@ -514,7 +517,7 @@ namespace ControllerMagic
                         ProcessButtons(pad);
                     }
 
-                    _passthrough.Tick(pad, gotPad, sdlPadReader.CurrentDeviceIdentity, sdlPadReader.ConnectionSerial);
+                    _passthrough.Tick(pad, gotPad, _connection.Identity, _connection.Serial);
 
                     Thread.Sleep(8);
                 }
@@ -529,28 +532,29 @@ namespace ControllerMagic
             }
         }
 
-        // -1 = uninitialized, 0 = XInput, 1 = SDL, 2 = none. Interpolating ControllerStatusText
-        // fresh every tick (the loop runs at ~125Hz) allocated a new string every 8ms for as long
-        // as a controller stayed connected; recomputing it only when the underlying state actually
-        // changes turns that into an allocation on connect/disconnect/slot-change instead.
-        private int _lastStatusKind = -1;
+        // Interpolating ControllerStatusText fresh every tick (the loop runs at ~125Hz) allocated a
+        // new string every 8ms for as long as a controller stayed connected; recomputing it only
+        // when the underlying state actually changes turns that into an allocation on
+        // connect/disconnect/slot-change instead.
+        private PadSource? _lastStatusSource;
         private int _lastStatusSlot = -1;
 
-        private void UpdateStatusText(bool gotXInput, bool gotPad)
-        {
-            int kind = gotXInput ? 0 : gotPad ? 1 : 2;
-            int slot = gotXInput ? XInputPadReader.LastSlot : -1;
+        private readonly PadConnectionTracker _connection = new();
 
-            if (kind == _lastStatusKind && slot == _lastStatusSlot)
+        private void UpdateStatusText(PadSource source)
+        {
+            int slot = source == PadSource.XInput ? XInputPadReader.LastSlot : -1;
+
+            if (source == _lastStatusSource && slot == _lastStatusSlot)
                 return;
 
-            _lastStatusKind = kind;
+            _lastStatusSource = source;
             _lastStatusSlot = slot;
 
-            ControllerStatusText = kind switch
+            ControllerStatusText = source switch
             {
-                0 => $"XInput controller · slot {slot}",
-                1 => "Controller connected (SDL)",
+                PadSource.XInput => $"XInput controller · slot {slot}",
+                PadSource.Sdl => "Controller connected (SDL)",
                 _ => "No controller detected"
             };
         }
