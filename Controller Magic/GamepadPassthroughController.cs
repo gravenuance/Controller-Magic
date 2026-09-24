@@ -34,7 +34,8 @@ internal sealed class GamepadPassthroughController : IDisposable
     private volatile bool _driversReady;
     private bool _startupResetDone;
     private PassthroughTarget _applied;
-    private int _transitioning;
+    // Only the poll thread starts transitions, and only once the previous one has finished.
+    private Task _transition = Task.CompletedTask;
     private Connection? _connection;
 
     public event Action<PassthroughNotice>? NoticeRaised;
@@ -134,14 +135,12 @@ internal sealed class GamepadPassthroughController : IDisposable
             _settingOn(), _driversReady, _fullscreenSuspended,
             gotPad, _connection != null, _connection?.BlockAttempted ?? false);
 
-        if (target != _applied && Interlocked.CompareExchange(ref _transitioning, 1, 0) == 0)
+        if (target != _applied && _transition.IsCompleted)
         {
             var previous = _applied;
             var toBlock = target.BlockConnection ? _connection : null;
             _applied = target with { BlockConnection = false };
-            _ = _runInBackground(() => ApplyTransition(previous, target, toBlock)).ContinueWith(
-                _ => Volatile.Write(ref _transitioning, 0),
-                TaskScheduler.Default);
+            _transition = _runInBackground(() => ApplyTransition(previous, target, toBlock));
         }
 
         if (_applied.VirtualPad && gotPad)

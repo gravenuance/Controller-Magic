@@ -8,6 +8,13 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Fixed
+- With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen
+  virtual pad. The controller is now handed back to the game while it's in the foreground.
+- Buttons held while leaving a fullscreen game no longer fire as fresh presses (B sending
+  Backspace, for example), and a held left click or touchpad drag is released when the game takes
+  over.
+
 ## [1.8.0] - 2026-09-24
 
 ### Added

@@ -293,6 +293,7 @@ namespace ControllerMagic
 
         private PadButtons _lastRawButtons;
         private PadButtons _stableButtons;
+        private readonly HeldButtonGate _heldOverButtons = new();
 
         // Without this, Thread.Sleep(8) below is at the mercy of Windows' default ~15.6ms timer
         // resolution and can actually sleep for ~16ms, making the poll loop (and mouse movement)
@@ -497,6 +498,7 @@ namespace ControllerMagic
 
                     if (blockedFullscreen)
                     {
+                        StandDownForFullscreen();
                         Thread.Sleep(100);
                         continue;
                     }
@@ -518,7 +520,7 @@ namespace ControllerMagic
 
                     if (gotPad)
                     {
-                        pad.Buttons = DebounceButtons(pad.Buttons);
+                        pad.Buttons = DebounceButtons(_heldOverButtons.Filter(pad.Buttons));
 
                         if (_keyboardMode)
                         {
@@ -535,9 +537,7 @@ namespace ControllerMagic
                     else
                     {
                         // A pad lost mid-drag would otherwise leave the left mouse button held down.
-                        _touchpadMouse.Reset();
-                        _touchpadHoldsLeft = false;
-                        InputEmulator.SetLeftButtonState(false);
+                        ReleaseHeldInput();
                     }
 
                     _passthrough.Tick(pad, gotPad, _connection.Identity, _connection.Serial);
@@ -553,6 +553,29 @@ namespace ControllerMagic
                 // entirely is still recovered from, on the next launch.
                 _passthrough.Shutdown();
             }
+        }
+
+        // The game gets the pad to itself: passthrough stands down through its normal tick, and
+        // nothing this app pressed stays held while it isn't reading the pad.
+        internal void StandDownForFullscreen()
+        {
+            ReleaseHeldInput();
+            _heldOverButtons.SuppressHeld();
+            _lastRawButtons = PadButtons.None;
+            _stableButtons = PadButtons.None;
+            _prevButtons = PadButtons.None;
+            _ltWasDown = true;
+            _rtWasDown = true;
+
+            _passthrough.SetFullscreenSuspended(true);
+            _passthrough.Tick(default, gotPad: false, _connection.Identity, _connection.Serial);
+        }
+
+        private void ReleaseHeldInput()
+        {
+            _touchpadMouse.Reset();
+            _touchpadHoldsLeft = false;
+            InputEmulator.SetLeftButtonState(false);
         }
 
         // Interpolating ControllerStatusText fresh every tick (the loop runs at ~125Hz) allocated a
