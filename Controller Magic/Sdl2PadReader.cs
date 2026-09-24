@@ -27,6 +27,12 @@ internal sealed class Sdl2PadReader : IDisposable
     [DllImport("SDL2.dll", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr SDL_JoystickPath(IntPtr joystick);
 
+    [DllImport("SDL2.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr SDL_JoystickPathForIndex(int deviceIndex);
+
+    // SDL's XInput backend names its devices "XInput#<slot>" (SDL_xinputjoystick.c).
+    private const string XInputPathPrefix = "XInput#";
+
     // Identifies the currently-open physical controller for HidHide, computed once when opened
     // (not per-tick) since it never changes for the lifetime of one connection. Null whenever no
     // controller is open, or SDL couldn't report a path for this specific device.
@@ -176,7 +182,7 @@ internal sealed class Sdl2PadReader : IDisposable
         int count = SDL.SDL_NumJoysticks();
         for (int i = 0; i < count; i++)
         {
-            if (SDL.SDL_IsGameController(i) != SDL.SDL_bool.SDL_TRUE)
+            if (SDL.SDL_IsGameController(i) != SDL.SDL_bool.SDL_TRUE || IsXInputBacked(PathForIndex(i)))
                 continue;
 
             var handle = SDL.SDL_GameControllerOpen(i);
@@ -193,6 +199,17 @@ internal sealed class Sdl2PadReader : IDisposable
             ConnectionSerial++;
             return;
         }
+    }
+
+    // XInputPadReader owns XInput pads. Opening one here also caught this app's own virtual pad, which
+    // then fed itself and kept the slot, so a returning Bluetooth DualSense was never opened.
+    internal static bool IsXInputBacked(string? path) =>
+        path != null && path.StartsWith(XInputPathPrefix, StringComparison.Ordinal);
+
+    private static string? PathForIndex(int deviceIndex)
+    {
+        IntPtr pathPtr = SDL_JoystickPathForIndex(deviceIndex);
+        return pathPtr == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(pathPtr);
     }
 
     // SDL_JoystickPath only resolves for a device SDL has actually opened as a game controller

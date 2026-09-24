@@ -8,6 +8,11 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Fixed
+- A Bluetooth DualSense that reconnected while "Use HidHide" was on could be ignored until the app
+  restarted: no lightbar change and no input. SDL had latched onto the app's own virtual Xbox pad,
+  which then kept itself alive. SDL now leaves every XInput pad to the XInput reader.
+
 ## [1.7.0] - 2026-09-23
 
 ### Added
