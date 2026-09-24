@@ -51,13 +51,15 @@ namespace ControllerMagic
             _controllerPoller = new ControllerPoller();
             _controllerPoller.KeyboardModeChanged += OnKeyboardModeChanged;
             _controllerPoller.PassthroughNoticeRaised += OnPassthroughNotice;
-            _controllerPoller.Start();
 
             _overlay = new KeyboardOverlayForm(_controllerPoller, TimeProvider.System);
             // Stays hidden until keyboard mode opens, but BeginInvoke needs its handle from the start.
             _ = _overlay.Handle;
 
             _resourceMonitor = new ResourceUsageMonitor(TimeSpan.FromMinutes(10));
+
+            // Last: its events land on _overlay, so a press before this point would find it null.
+            _controllerPoller.Start();
 
             // Startup-task housekeeping (migrating a legacy Run-key install, defaulting startup to
             // on for a first-ever run) spawns schtasks.exe and can briefly block on a UAC prompt -

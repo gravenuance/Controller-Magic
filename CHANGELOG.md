@@ -23,6 +23,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   create one leaked its driver handles.
 - Right after "Use HidHide" plugged in its virtual Xbox pad, the app could briefly read that pad
   back as the real controller, freezing or latching input from a DualSense or other non-Xbox pad.
+- An unexpected error while reading the controller closed the whole app. It's now logged and the
+  controller keeps working. Pressing the stick right as the app started could also crash it.
 
 ## [1.8.0] - 2026-09-24
 

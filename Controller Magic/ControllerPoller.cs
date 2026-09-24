@@ -492,57 +492,18 @@ namespace ControllerMagic
             {
                 while (_running)
                 {
-                    bool blockedFullscreen = FullscreenHelper.IsBlockedFullscreen();
-                    _passthrough.SetFullscreenSuspended(blockedFullscreen);
-                    sdlPadReader.SetLightbar(ControllerLights.ColorFor(ControllerLights.ComputeMode(blockedFullscreen, _keyboardMode)));
-
-                    if (blockedFullscreen)
+                    int sleepMs;
+                    try
                     {
-                        StandDownForFullscreen();
-                        Thread.Sleep(100);
-                        continue;
+                        sleepMs = RunTick(sdlPadReader);
+                    }
+                    catch (Exception ex)
+                    {
+                        RecoverFromTickFault(ex);
+                        sleepMs = PollIntervalMs;
                     }
 
-                    // Keeps SDL's device state (event queue drained, a newly available controller
-                    // opened) current every tick, independent of which source ends up supplying the
-                    // frame below - see the comment on PumpEvents() for why that independence matters.
-                    sdlPadReader.PumpEvents();
-                    sdlPadReader.SetPlayerLights(ControllerLights.PlayerLightsFor(sdlPadReader.Battery));
-
-                    PadSource source = XInputPadReader.TryReadAny(out var pad, _passthrough.VirtualPadXInputSlots) ? PadSource.XInput
-                        : sdlPadReader.TryGetLatest(out pad) ? PadSource.Sdl
-                        : PadSource.None;
-                    bool gotPad = source != PadSource.None;
-
-                    IsControllerConnected = gotPad;
-                    UpdateStatusText(source);
-                    _connection.Observe(source, XInputPadReader.LastSlot, sdlPadReader.CurrentDeviceIdentity, sdlPadReader.ConnectionSerial);
-
-                    if (gotPad)
-                    {
-                        pad.Buttons = DebounceButtons(_heldOverButtons.Filter(pad.Buttons));
-
-                        if (_keyboardMode)
-                        {
-                            ProcessKeyboardMode(pad);
-                        }
-                        else
-                        {
-                            ProcessSticks(pad);
-                            ProcessTouchpad(pad);
-                        }
-
-                        ProcessButtons(pad);
-                    }
-                    else
-                    {
-                        // A pad lost mid-drag would otherwise leave the left mouse button held down.
-                        ReleaseHeldInput();
-                    }
-
-                    _passthrough.Tick(pad, gotPad, _connection.Identity, _connection.Serial);
-
-                    Thread.Sleep(8);
+                    Thread.Sleep(sleepMs);
                 }
             }
             finally
@@ -552,6 +513,89 @@ namespace ControllerMagic
                 // GamepadPassthroughController.Shutdown for why a crash/force-kill that skips this
                 // entirely is still recovered from, on the next launch.
                 _passthrough.Shutdown();
+            }
+        }
+
+        private const int PollIntervalMs = 8;
+        private const int FullscreenPollIntervalMs = 100;
+
+        // Returns how long to wait before the next tick.
+        private int RunTick(Sdl2PadReader sdlPadReader)
+        {
+            bool blockedFullscreen = FullscreenHelper.IsBlockedFullscreen();
+            _passthrough.SetFullscreenSuspended(blockedFullscreen);
+            sdlPadReader.SetLightbar(ControllerLights.ColorFor(ControllerLights.ComputeMode(blockedFullscreen, _keyboardMode)));
+
+            if (blockedFullscreen)
+            {
+                StandDownForFullscreen();
+                return FullscreenPollIntervalMs;
+            }
+
+            // Keeps SDL's device state (event queue drained, a newly available controller
+            // opened) current every tick, independent of which source ends up supplying the
+            // frame below - see the comment on PumpEvents() for why that independence matters.
+            sdlPadReader.PumpEvents();
+            sdlPadReader.SetPlayerLights(ControllerLights.PlayerLightsFor(sdlPadReader.Battery));
+
+            PadSource source = XInputPadReader.TryReadAny(out var pad, _passthrough.VirtualPadXInputSlots) ? PadSource.XInput
+                : sdlPadReader.TryGetLatest(out pad) ? PadSource.Sdl
+                : PadSource.None;
+            bool gotPad = source != PadSource.None;
+
+            IsControllerConnected = gotPad;
+            UpdateStatusText(source);
+            _connection.Observe(source, XInputPadReader.LastSlot, sdlPadReader.CurrentDeviceIdentity, sdlPadReader.ConnectionSerial);
+
+            if (gotPad)
+            {
+                pad.Buttons = DebounceButtons(_heldOverButtons.Filter(pad.Buttons));
+
+                if (_keyboardMode)
+                {
+                    ProcessKeyboardMode(pad);
+                }
+                else
+                {
+                    ProcessSticks(pad);
+                    ProcessTouchpad(pad);
+                }
+
+                ProcessButtons(pad);
+            }
+            else
+            {
+                // A pad lost mid-drag would otherwise leave the left mouse button held down.
+                ReleaseHeldInput();
+            }
+
+            _passthrough.Tick(pad, gotPad, _connection.Identity, _connection.Serial);
+            return PollIntervalMs;
+        }
+
+        private readonly RepeatingFaultThrottle _tickFaults = new(TimeProvider.System);
+
+        // A throwing tick (including a KeyboardModeChanged or notice subscriber, which run here)
+        // must not end the thread. Held buttons are suppressed until released, since the failed
+        // tick never recorded them and would otherwise fire their press again on every tick.
+        private void RecoverFromTickFault(Exception ex)
+        {
+            if (_tickFaults.Record(ex) is { } report)
+            {
+                if (report.IsNew)
+                    AppLog.Default.Error("ControllerPoller: a poll tick failed; releasing held input and carrying on", ex);
+                else
+                    AppLog.Default.Error($"ControllerPoller: the same poll tick failure repeated {report.Repeats} more times");
+            }
+
+            try
+            {
+                ReleaseHeldInput();
+                _heldOverButtons.SuppressHeld();
+            }
+            catch (Exception releaseEx)
+            {
+                AppLog.Default.Warning("ControllerPoller: failed to release held input after a tick failure", releaseEx);
             }
         }
 
