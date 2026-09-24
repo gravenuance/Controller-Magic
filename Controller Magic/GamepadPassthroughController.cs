@@ -40,6 +40,11 @@ internal sealed class GamepadPassthroughController : IDisposable
     private readonly VirtualPadRetry _virtualPadRetry;
     // Only the poll thread starts transitions, and only once the previous one has finished.
     private Task _transition = Task.CompletedTask;
+    // Once set (under the gate), nothing may cloak or connect again: a transition still running
+    // when Shutdown uncloaks would otherwise leave the pad hidden after exit.
+    private readonly Lock _shutdownGate = new();
+    private volatile bool _shutDown;
+    private static readonly TimeSpan ShutdownWait = TimeSpan.FromSeconds(2);
     private Connection? _connection;
 
     public event Action<PassthroughNotice>? NoticeRaised;
@@ -127,6 +132,9 @@ internal sealed class GamepadPassthroughController : IDisposable
 
     public void Tick(PadState pad, bool gotPad, PhysicalDeviceIdentity? deviceIdentity, int connectionSerial)
     {
+        if (_shutDown)
+            return;
+
         if (!_startupResetDone)
         {
             _startupResetDone = true;
@@ -245,6 +253,9 @@ internal sealed class GamepadPassthroughController : IDisposable
     // off only flips the cloak flag - allow-list and block-list entries stay so re-activating is instant.
     private void ApplyTransition(PassthroughTarget current, PassthroughTarget target, Connection? toBlock)
     {
+        if (_shutDown)
+            return;
+
         try
         {
             ResourceUsageMonitor.LogSnapshot($"before-transition {current} -> {target}");
@@ -271,15 +282,25 @@ internal sealed class GamepadPassthroughController : IDisposable
 
     private bool ConnectVirtualPad()
     {
-        if (_vigem.TryConnect())
+        if (_shutDown)
+            return false;
+
+        if (!_vigem.TryConnect())
         {
-            _virtualPadRetry.RecordConnected();
-            _virtualPadExpected = true;
-            return true;
+            RecordConnectFailure("failed to connect");
+            return false;
         }
 
-        RecordConnectFailure("failed to connect");
-        return false;
+        // Shutdown may have disconnected while this was still connecting.
+        if (_shutDown)
+        {
+            _vigem.Disconnect();
+            return false;
+        }
+
+        _virtualPadRetry.RecordConnected();
+        _virtualPadExpected = true;
+        return true;
     }
 
     private void RecordConnectFailure(string what)
@@ -301,11 +322,14 @@ internal sealed class GamepadPassthroughController : IDisposable
 
     private void SetCloaked(bool cloaked)
     {
-        if (cloaked == _cloaked)
-            return;
+        lock (_shutdownGate)
+        {
+            if (cloaked == _cloaked || (cloaked && _shutDown))
+                return;
 
-        _hidHide.SetCloakingEnabled(cloaked);
-        _cloaked = cloaked;
+            _hidHide.SetCloakingEnabled(cloaked);
+            _cloaked = cloaked;
+        }
     }
 
     private void BlockConnection(Connection connection)
@@ -342,12 +366,27 @@ internal sealed class GamepadPassthroughController : IDisposable
     // same-process crash on the poll thread. A short synchronous wait here is a deliberate,
     // narrow exception to "never block on async": this is a genuine shutdown boundary, and the
     // guaranteed startup reset above is what actually keeps a missed shutdown from mattering.
+    // Final: after this, Tick does nothing.
     public void Shutdown()
     {
+        lock (_shutdownGate)
+        {
+            if (_shutDown)
+                return;
+            _shutDown = true;
+        }
+
         try
         {
-            _vigem.Disconnect();
-            _hidHide.SetCloakingEnabled(false);
+            if (!_transition.Wait(ShutdownWait))
+                AppLog.Default.Warning("GamepadPassthroughController: a transition was still running at shutdown");
+
+            DisconnectVirtualPad();
+            lock (_shutdownGate)
+            {
+                _hidHide.SetCloakingEnabled(false);
+                _cloaked = false;
+            }
         }
         catch (Exception ex)
         {

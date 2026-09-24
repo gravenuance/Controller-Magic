@@ -17,6 +17,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - If the virtual Xbox pad failed to connect or dropped out, the real controller stayed hidden with
   nothing replacing it until the app restarted. The real controller now stays visible while the
   virtual pad is retried a few times, and it's hidden again once the virtual pad is up.
+- Exiting while "Use HidHide" was switching the controller over could leave it hidden after the
+  app closed, and a rare race between sending input and switching could crash the app.
 
 ## [1.8.0] - 2026-09-24
 

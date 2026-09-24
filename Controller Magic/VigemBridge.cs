@@ -21,8 +21,11 @@ internal interface IVirtualPad : IDisposable
 
 internal sealed class VigemBridge : IVirtualPad
 {
+    // Reports and UserIndex come from the poll thread while connects and disconnects come from a
+    // transition's pool thread; the gate keeps a handle from being freed while the other uses it.
+    private readonly Lock _gate = new();
     private ViGEmClient? _client;
-    private IXbox360Controller? _controller;
+    private volatile IXbox360Controller? _controller;
 
     public bool IsConnected => _controller != null;
 
@@ -37,17 +40,19 @@ internal sealed class VigemBridge : IVirtualPad
     {
         get
         {
-            var controller = _controller;
-            if (controller == null)
-                return null;
+            lock (_gate)
+            {
+                if (_controller == null)
+                    return null;
 
-            try
-            {
-                return controller.UserIndex;
-            }
-            catch (Xbox360UserIndexNotReportedException)
-            {
-                return null;
+                try
+                {
+                    return _controller.UserIndex;
+                }
+                catch (Xbox360UserIndexNotReportedException)
+                {
+                    return null;
+                }
             }
         }
     }
@@ -64,8 +69,13 @@ internal sealed class VigemBridge : IVirtualPad
             controller.AutoSubmitReport = false;
             controller.Connect();
 
-            _client = client;
-            _controller = controller;
+            // Built outside the gate so a slow driver call never holds up the poll thread.
+            lock (_gate)
+            {
+                _client = client;
+                _controller = controller;
+            }
+
             return true;
         }
         catch (VigemBusNotFoundException ex)
@@ -88,55 +98,67 @@ internal sealed class VigemBridge : IVirtualPad
     // are unaffected - only the D-pad and left stick drive that Windows feature.
     public void SubmitReport(PadState pad, bool includeStickAndDpad = true)
     {
-        var controller = _controller;
-        if (controller == null)
-            return;
-
-        try
+        lock (_gate)
         {
-            foreach (var (button, pressed) in VirtualPadReportMapper.MapButtons(pad.Buttons, includeStickAndDpad))
-                controller.SetButtonState(button, pressed);
+            var controller = _controller;
+            if (controller == null)
+                return;
 
-            controller.SetAxisValue(Xbox360Axis.LeftThumbX, includeStickAndDpad ? pad.LeftThumbX : (short)0);
-            controller.SetAxisValue(Xbox360Axis.LeftThumbY, includeStickAndDpad ? pad.LeftThumbY : (short)0);
-            controller.SetAxisValue(Xbox360Axis.RightThumbX, pad.RightThumbX);
-            controller.SetAxisValue(Xbox360Axis.RightThumbY, pad.RightThumbY);
-            controller.SetSliderValue(Xbox360Slider.LeftTrigger, pad.LeftTrigger);
-            controller.SetSliderValue(Xbox360Slider.RightTrigger, pad.RightTrigger);
-            controller.SubmitReport();
+            try
+            {
+                foreach (var (button, pressed) in VirtualPadReportMapper.MapButtons(pad.Buttons, includeStickAndDpad))
+                    controller.SetButtonState(button, pressed);
+
+                controller.SetAxisValue(Xbox360Axis.LeftThumbX, includeStickAndDpad ? pad.LeftThumbX : (short)0);
+                controller.SetAxisValue(Xbox360Axis.LeftThumbY, includeStickAndDpad ? pad.LeftThumbY : (short)0);
+                controller.SetAxisValue(Xbox360Axis.RightThumbX, pad.RightThumbX);
+                controller.SetAxisValue(Xbox360Axis.RightThumbY, pad.RightThumbY);
+                controller.SetSliderValue(Xbox360Slider.LeftTrigger, pad.LeftTrigger);
+                controller.SetSliderValue(Xbox360Slider.RightTrigger, pad.RightTrigger);
+                controller.SubmitReport();
+                return;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Default.Warning("VigemBridge: failed to submit a report; disconnecting", ex);
+            }
         }
-        catch (Exception ex)
-        {
-            AppLog.Default.Warning("VigemBridge: failed to submit a report; disconnecting", ex);
-            Cleanup();
-        }
+
+        Cleanup();
     }
 
     public void Disconnect() => Cleanup();
 
+    // Detaches under the gate, then releases outside it: nothing else can reach the handles by then.
     private void Cleanup()
     {
+        ViGEmClient? client;
+        IXbox360Controller? controller;
+        lock (_gate)
+        {
+            client = _client;
+            controller = _controller;
+            _client = null;
+            _controller = null;
+        }
+
         try
         {
-            _controller?.Disconnect();
+            controller?.Disconnect();
         }
         catch (Exception ex)
         {
             AppLog.Default.Warning("VigemBridge: error disconnecting the virtual controller", ex);
         }
 
-        _controller = null;
-
         try
         {
-            _client?.Dispose();
+            client?.Dispose();
         }
         catch (Exception ex)
         {
             AppLog.Default.Warning("VigemBridge: error disposing the ViGEm client", ex);
         }
-
-        _client = null;
     }
 
     public void Dispose() => Cleanup();

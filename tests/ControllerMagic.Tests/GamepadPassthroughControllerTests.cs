@@ -127,6 +127,49 @@ public class GamepadPassthroughControllerTests
     }
 
     [Fact]
+    public void Shutdown_WithATransitionStillPending_ItCannotConnectTheVirtualPadAfterwards()
+    {
+        var harness = new PassthroughHarness();
+        harness.TickWithoutPad();
+        harness.Runner.Hold = true;
+        harness.TickWithPad();
+
+        harness.Controller.Shutdown();
+        harness.Runner.RunHeld();
+
+        Assert.False(harness.VirtualPad.IsConnected);
+        Assert.False(harness.HidHide.Cloaked);
+    }
+
+    [Fact]
+    public void Shutdown_WithATransitionStillPending_ItCannotCloakTheRealPadAfterwards()
+    {
+        var harness = new PassthroughHarness { SettingOn = false };
+        harness.TickWithoutPad();
+        harness.SettingOn = true;
+        harness.Runner.Hold = true;
+        harness.TickWithoutPad();
+
+        harness.Controller.Shutdown();
+        harness.Runner.RunHeld();
+
+        Assert.False(harness.HidHide.Cloaked);
+    }
+
+    [Fact]
+    public void Tick_AfterShutdown_ChangesNothing()
+    {
+        var harness = new PassthroughHarness();
+        harness.TickWithoutPad();
+        harness.Controller.Shutdown();
+
+        harness.TickWithPad();
+
+        Assert.False(harness.HidHide.Cloaked);
+        Assert.Equal(0, harness.VirtualPad.ConnectAttempts);
+    }
+
+    [Fact]
     public void Tick_VirtualPadKeepsFailing_GivesUpUntilTheControllerReconnects()
     {
         var harness = new PassthroughHarness();
