@@ -8,6 +8,12 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Added
+- Bluetooth range guard (DualSense, DualShock 4, Switch Pro): when the controller stops sending
+  reports, typically from being too far away, it is treated as centred with every button released
+  instead of repeating its last state. The cursor no longer drifts and a held button no longer
+  sticks; control returns as soon as reports resume.
+
 ### Fixed
 - A Bluetooth DualSense that reconnected while "Use HidHide" was on could be ignored until the app
   restarted: no lightbar change and no input. SDL had latched onto the app's own virtual Xbox pad,

@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using SDL2;
 
 namespace ControllerMagic;
@@ -57,9 +57,22 @@ internal sealed class Sdl2PadReader : IDisposable
     private long _playerLightsSentAt;
     private bool _playerLightsFailureLogged;
 
+    [DllImport("SDL2.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern unsafe int SDL_GameControllerGetSensorDataWithTimestamp(
+        IntPtr gamecontroller, SDL.SDL_SensorType type, out ulong timestamp, float* data, int numValues);
+
+    // Long enough to ride out ordinary Bluetooth packet loss without dropping a held drag.
+    private static readonly TimeSpan ReportsStaleAfter = TimeSpan.FromMilliseconds(200);
+
+    private readonly ReportWatchdog _watchdog;
+    private bool _hasReportStamp;
+    private bool _reportsStopped;
+    private int _dropoutCount;
+
     public Sdl2PadReader(TimeProvider clock)
     {
         _clock = clock;
+        _watchdog = new ReportWatchdog(clock, ReportsStaleAfter);
 
         SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
@@ -84,6 +97,10 @@ internal sealed class Sdl2PadReader : IDisposable
         SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_HIDAPI_PS5_PLAYER_LED, "0");
 
         _initialized = SDL.SDL_Init(SDL.SDL_INIT_GAMECONTROLLER) == 0;
+
+        // The accelerometer runs only as a per-report liveness stamp; its events would just flood the queue.
+        if (_initialized)
+            _ = SDL.SDL_EventState(SDL.SDL_EventType.SDL_CONTROLLERSENSORUPDATE, SDL.SDL_IGNORE);
     }
 
     public bool TryGetLatest(out PadState state)
@@ -98,8 +115,33 @@ internal sealed class Sdl2PadReader : IDisposable
             return false;
         }
 
-        state = Read(_controller);
+        state = TrackReportsStopped(_watchdog.IsStale(ReadReportStamp()))
+            ? new PadState { IsConnected = true }
+            : Read(_controller);
         return true;
+    }
+
+    private unsafe ulong? ReadReportStamp()
+    {
+        if (!_hasReportStamp)
+            return null;
+
+        float* data = stackalloc float[3];
+        return SDL_GameControllerGetSensorDataWithTimestamp(_controller, SDL.SDL_SensorType.SDL_SENSOR_ACCEL, out ulong stamp, data, 3) == 0
+            ? stamp
+            : null;
+    }
+
+    // A pad at the edge of range can drop out many times a minute, so only the first is logged in full.
+    private bool TrackReportsStopped(bool stopped)
+    {
+        if (stopped == _reportsStopped)
+            return stopped;
+
+        _reportsStopped = stopped;
+        if (stopped && _dropoutCount++ == 0)
+            AppLog.Default.Warning($"Sdl2PadReader: no reports for {ReportsStaleAfter.TotalMilliseconds:0}ms (out of range?), holding the pad neutral");
+        return stopped;
     }
 
     // Public so the poll loop can run this every tick regardless of which source ends up
@@ -195,11 +237,16 @@ internal sealed class Sdl2PadReader : IDisposable
             CurrentDeviceIdentity = TryGetDeviceIdentity(handle, joystick);
             var type = SDL.SDL_GameControllerGetType(handle);
             _isDualSense = type == SDL.SDL_GameControllerType.SDL_CONTROLLER_TYPE_PS5;
-            AppLog.Default.Info($"Sdl2PadReader: opened {type} ({SDL.SDL_GameControllerName(handle)})");
+            _hasReportStamp = TryEnableReportStamp(handle);
+            AppLog.Default.Info($"Sdl2PadReader: opened {type} ({SDL.SDL_GameControllerName(handle)}), range guard {(_hasReportStamp ? "on" : "unavailable")}");
             ConnectionSerial++;
             return;
         }
     }
+
+    private static bool TryEnableReportStamp(IntPtr controller) =>
+        SDL.SDL_GameControllerHasSensor(controller, SDL.SDL_SensorType.SDL_SENSOR_ACCEL) == SDL.SDL_bool.SDL_TRUE
+        && SDL.SDL_GameControllerSetSensorEnabled(controller, SDL.SDL_SensorType.SDL_SENSOR_ACCEL, SDL.SDL_bool.SDL_TRUE) == 0;
 
     // XInputPadReader owns XInput pads. Opening one here also caught this app's own virtual pad, which
     // then fed itself and kept the slot, so a returning Bluetooth DualSense was never opened.
@@ -239,6 +286,13 @@ internal sealed class Sdl2PadReader : IDisposable
         _isDualSense = false;
         _appliedPlayerLights = null;
         _playerLightsFailureLogged = false;
+        if (_dropoutCount > 0)
+            AppLog.Default.Info($"Sdl2PadReader: {_dropoutCount} report dropout(s) during this connection");
+
+        _hasReportStamp = false;
+        _watchdog.Reset();
+        _reportsStopped = false;
+        _dropoutCount = 0;
     }
 
     private static PadState Read(IntPtr controller)
