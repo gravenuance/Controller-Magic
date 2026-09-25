@@ -304,21 +304,11 @@ namespace ControllerMagic
         private PadButtons _stableButtons;
         private readonly HeldButtonGate _heldOverButtons = new();
 
-        // Without this, Thread.Sleep(8) below is at the mercy of Windows' default ~15.6ms timer
-        // resolution and can actually sleep for ~16ms, making the poll loop (and mouse movement)
-        // land at an uneven cadence instead of a steady ~125Hz beat.
-        [DllImport("winmm.dll", SetLastError = true)]
-        private static extern uint timeBeginPeriod(uint uPeriod);
-
-        [DllImport("winmm.dll", SetLastError = true)]
-        private static extern uint timeEndPeriod(uint uPeriod);
-
         public void Start()
         {
             if (_running) return;
 
             _running = true;
-            _ = timeBeginPeriod(1);
             _thread = new Thread(Loop)
             {
                 IsBackground = true,
@@ -331,7 +321,6 @@ namespace ControllerMagic
         {
             _running = false;
             _thread?.Join();
-            _ = timeEndPeriod(1);
         }
 
         // Loop()'s finally block already disconnects/uncloaks via _passthrough.Shutdown() by the
@@ -496,6 +485,7 @@ namespace ControllerMagic
             // Constructed and used only on this thread: SDL's event queue is meant to be pumped
             // consistently from a single thread for its whole lifetime.
             using var sdlPadReader = new Sdl2PadReader(TimeProvider.System);
+            using var pacer = new PollPacer();
 
             try
             {
@@ -512,7 +502,7 @@ namespace ControllerMagic
                         sleepMs = PollIntervalMs;
                     }
 
-                    Thread.Sleep(sleepMs);
+                    pacer.Wait(sleepMs);
                 }
             }
             finally
@@ -527,6 +517,8 @@ namespace ControllerMagic
 
         private const int PollIntervalMs = 8;
         private const int FullscreenPollIntervalMs = 100;
+        // With no controller there's nothing to be smooth for; a new one is still read within this.
+        private const int IdlePollIntervalMs = 100;
 
         // Returns how long to wait before the next tick.
         private int RunTick(Sdl2PadReader sdlPadReader)
@@ -578,7 +570,7 @@ namespace ControllerMagic
             }
 
             _passthrough.Tick(pad, gotPad, _connection.Identity, _connection.Serial);
-            return PollIntervalMs;
+            return gotPad ? PollIntervalMs : IdlePollIntervalMs;
         }
 
         private readonly RepeatingFaultThrottle _tickFaults = new(TimeProvider.System);

@@ -13,6 +13,9 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   second instead of 125 times. A newly plugged Xbox controller is picked up within a second.
 - While no PlayStation, Switch or other SDL controller is connected, the app no longer lists all
   game devices 125 times a second; it looks when Windows reports a new one.
+- With no controller connected, the app checks for one 10 times a second instead of 125. It no
+  longer raises Windows' timer resolution at all, which lets the PC save more power, and the
+  cursor keeps a steadier pace on Windows 11 when the app has no visible window.
 
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen
