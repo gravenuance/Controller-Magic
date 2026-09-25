@@ -117,29 +117,29 @@ namespace ControllerMagic
             BeginCard("Mouse movement");
             AddSlider(
                 name: "Deadzone",
-                min: 0, max: 10000,
+                range: AppSettings.StickDeadZoneRange,
                 get: () => AppSettings.Instance.StickDeadZone,
                 set: v => AppSettings.Instance.StickDeadZone = v,
                 formatReadout: v => $"{v} / 32767",
-                gaugeFraction: v => v / 10000.0);
+                gaugeFraction: v => v / (double)AppSettings.StickDeadZoneRange.Max);
             AddSlider(
                 name: "Sensitivity",
-                min: 5, max: 60,
-                get: () => (int)Math.Round(AppSettings.Instance.StickSensitivity * 1000f),
-                set: v => AppSettings.Instance.StickSensitivity = v / 1000f,
+                range: AppSettings.StickSensitivityRange,
+                get: () => AppSettings.StickSensitivityRange.ToSlider(AppSettings.Instance.StickSensitivity),
+                set: v => AppSettings.Instance.StickSensitivity = AppSettings.StickSensitivityRange.FromSlider(v),
                 formatReadout: v => (v / 1000f).ToString("0.000"));
             AddSlider(
                 name: "Acceleration curve",
-                min: 10, max: 40,
-                get: () => (int)Math.Round(AppSettings.Instance.StickAccelPower * 10f),
-                set: v => AppSettings.Instance.StickAccelPower = v / 10f,
+                range: AppSettings.StickAccelPowerRange,
+                get: () => AppSettings.StickAccelPowerRange.ToSlider(AppSettings.Instance.StickAccelPower),
+                set: v => AppSettings.Instance.StickAccelPower = AppSettings.StickAccelPowerRange.FromSlider(v),
                 formatReadout: v => (v / 10f).ToString("0.0"),
                 curveFn: (v, t) => Math.Pow(t, v / 10.0));
             AddSlider(
                 name: "Speed ramp-up",
-                min: 0, max: 100,
-                get: () => (int)Math.Round(AppSettings.Instance.StickRampSeconds * 100f),
-                set: v => AppSettings.Instance.StickRampSeconds = v / 100f,
+                range: AppSettings.StickRampSecondsRange,
+                get: () => AppSettings.StickRampSecondsRange.ToSlider(AppSettings.Instance.StickRampSeconds),
+                set: v => AppSettings.Instance.StickRampSeconds = AppSettings.StickRampSecondsRange.FromSlider(v),
                 formatReadout: v => (v / 100f).ToString("0.00") + "s",
                 curveFn: (v, t) =>
                 {
@@ -148,23 +148,24 @@ namespace ControllerMagic
                 });
             AddSlider(
                 name: "Touchpad speed",
-                min: 300, max: 3000,
+                range: AppSettings.TouchpadSpeedRange,
                 get: () => AppSettings.Instance.TouchpadSpeed,
                 set: v => AppSettings.Instance.TouchpadSpeed = v,
                 formatReadout: v => $"{v} px",
-                gaugeFraction: v => (v - 300) / 2700.0);
+                gaugeFraction: v => (v - AppSettings.TouchpadSpeedRange.Min) /
+                    (double)(AppSettings.TouchpadSpeedRange.Max - AppSettings.TouchpadSpeedRange.Min));
             EndCard();
 
             BeginCard("Other deadzones");
             AddSlider(
                 name: "Scroll",
-                min: 0, max: 10000,
+                range: AppSettings.ScrollDeadZoneRange,
                 get: () => AppSettings.Instance.ScrollDeadZone,
                 set: v => AppSettings.Instance.ScrollDeadZone = v,
                 formatReadout: v => v.ToString());
             AddSlider(
                 name: "Keyboard",
-                min: 0, max: 10000,
+                range: AppSettings.KeyboardDeadZoneRange,
                 get: () => AppSettings.Instance.KeyboardDeadZone,
                 set: v => AppSettings.Instance.KeyboardDeadZone = v,
                 formatReadout: v => v.ToString());
@@ -348,7 +349,7 @@ namespace ControllerMagic
         // ============ controls ============
 
         private void AddSlider(
-            string name, int min, int max,
+            string name, SettingRange range,
             Func<int> get, Action<int> set, Func<int, string> formatReadout,
             Func<int, double, double>? curveFn = null,
             Func<int, double>? gaugeFraction = null)
@@ -384,8 +385,8 @@ namespace ControllerMagic
 
             var slider = new Slider
             {
-                Minimum = min,
-                Maximum = max,
+                Minimum = range.Min,
+                Maximum = range.Max,
                 Location = new Point(CardPadding, _cardY + 3),
                 Size = new Size(sliderWidth, 20),
                 TabIndex = _nextTabIndex++,

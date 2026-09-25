@@ -183,4 +183,63 @@ public sealed class AppSettingsTests : IDisposable
             Assert.Equal(AppSettings.CurrentSchemaVersion, parsed.Settings.SchemaVersion);
         }
     }
+
+    [Fact]
+    public void Parse_NullLists_FallBackToDefaultLists()
+    {
+        var parsed = SettingsStore.Parse("""{"WatchedProcessNames": null, "StreamingServiceNames": null}""");
+
+        Assert.Equal(new AppSettings().WatchedProcessNames, parsed.Settings.WatchedProcessNames);
+        Assert.Equal(new AppSettings().StreamingServiceNames, parsed.Settings.StreamingServiceNames);
+        Assert.Equal(["WatchedProcessNames", "StreamingServiceNames"], parsed.CorrectedFields);
+    }
+
+    [Fact]
+    public void Parse_BlankListEntries_AreRemoved()
+    {
+        var parsed = SettingsStore.Parse("""{"WatchedProcessNames": ["vlc", null, "  "]}""");
+
+        Assert.Equal(["vlc"], parsed.Settings.WatchedProcessNames);
+        Assert.Equal(["WatchedProcessNames"], parsed.CorrectedFields);
+    }
+
+    [Theory]
+    [InlineData("StickDeadZone", "-5", 0f)]
+    [InlineData("StickDeadZone", "99999", 10000f)]
+    [InlineData("ScrollDeadZone", "-1", 0f)]
+    [InlineData("KeyboardDeadZone", "20000", 10000f)]
+    [InlineData("TouchpadSpeed", "0", 300f)]
+    [InlineData("TouchpadSpeed", "100000", 3000f)]
+    [InlineData("StickSensitivity", "0", 0.005f)]
+    [InlineData("StickSensitivity", "4", 0.06f)]
+    [InlineData("StickAccelPower", "-3", 1f)]
+    [InlineData("StickAccelPower", "0", 1f)]
+    [InlineData("StickAccelPower", "9", 4f)]
+    [InlineData("StickRampSeconds", "-0.5", 0f)]
+    [InlineData("StickRampSeconds", "60", 1f)]
+    public void Parse_OutOfRangeNumber_IsClampedToTheSliderRange(string field, string value, float expected)
+    {
+        var parsed = SettingsStore.Parse($$"""{"{{field}}": {{value}}}""");
+
+        var property = typeof(AppSettings).GetProperty(field)!;
+        Assert.Equal(expected, Convert.ToSingle(property.GetValue(parsed.Settings), System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal([field], parsed.CorrectedFields);
+    }
+
+    [Fact]
+    public void Parse_InRangeValues_AreLeftAsIs()
+    {
+        var parsed = SettingsStore.Parse("""{"StickDeadZone": 0, "TouchpadSpeed": 3000, "StickSensitivity": 0.0185, "StickRampSeconds": 0}""");
+
+        Assert.Equal(0, parsed.Settings.StickDeadZone);
+        Assert.Equal(3000, parsed.Settings.TouchpadSpeed);
+        Assert.Equal(0.0185f, parsed.Settings.StickSensitivity);
+        Assert.Empty(parsed.CorrectedFields);
+    }
+
+    [Fact]
+    public void Defaults_AreAllWithinTheirRanges()
+    {
+        Assert.Empty(AppSettings.CreateDefault().Validate());
+    }
 }

@@ -97,6 +97,10 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   version's settings and "Start with Windows" was switched back on. The older version now leaves
   that file and the startup setting alone.
 
+- An empty list or an out-of-range number in the settings file kept Settings from opening or
+  made the cursor misbehave. Such values are now reset or brought into the range the Settings
+  sliders allow, and the log says which ones.
+
 ### Security
 - Driver installers could be swapped by another program between the signature check and the
   admin prompt. The admin prompt now names Controller Magic itself, which copies the installers

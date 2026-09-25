@@ -1,5 +1,23 @@
 namespace ControllerMagic
 {
+    // A setting's allowed range in the Settings slider's integer units; stored value = slider value / Scale.
+    internal readonly record struct SettingRange(int Min, int Max, int Scale = 1)
+    {
+        public int ToSlider(float value) => Math.Clamp((int)Math.Round(value * Scale), Min, Max);
+
+        public float FromSlider(int sliderValue) => (float)sliderValue / Scale;
+
+        public bool Contains(int value) => value >= Min && value <= Max;
+
+        public bool Contains(float value) => float.IsFinite(value) && value >= FromSlider(Min) && value <= FromSlider(Max);
+
+        public int Clamp(int value) => Math.Clamp(value, Min, Max);
+
+        // NaN or infinity falls back to the default rather than an arbitrary end of the range.
+        public float Clamp(float value, float fallback) =>
+            float.IsFinite(value) ? Math.Clamp(value, FromSlider(Min), FromSlider(Max)) : fallback;
+    }
+
     internal sealed class AppSettings
     {
         // Bumped whenever a persisted field's meaning or shape changes in a way older data can't
@@ -11,6 +29,15 @@ namespace ControllerMagic
         public static AppSettings Instance { get; } = SettingsStore.CreateDefault().Load();
 
         public int SchemaVersion { get; set; }
+
+        // One source of truth for what the Settings sliders offer and what Validate accepts.
+        internal static readonly SettingRange StickDeadZoneRange = new(0, 10000);
+        internal static readonly SettingRange ScrollDeadZoneRange = new(0, 10000);
+        internal static readonly SettingRange KeyboardDeadZoneRange = new(0, 10000);
+        internal static readonly SettingRange StickSensitivityRange = new(5, 60, 1000);
+        internal static readonly SettingRange StickAccelPowerRange = new(10, 40, 10);
+        internal static readonly SettingRange StickRampSecondsRange = new(0, 100, 100);
+        internal static readonly SettingRange TouchpadSpeedRange = new(300, 3000);
 
         // All deadzone modifiers
         public int StickDeadZone { get; set; } = 4000;
@@ -66,6 +93,57 @@ namespace ControllerMagic
         internal SettingsStore? Store { get; set; }
 
         internal static AppSettings CreateDefault() => new() { SchemaVersion = CurrentSchemaVersion };
+
+        // Brings hand-edited or damaged values back into range; returns the names of fields it changed.
+        internal List<string> Validate()
+        {
+            var defaults = new AppSettings();
+            var corrected = new List<string>();
+
+            StickDeadZone = CheckRange(StickDeadZone, StickDeadZoneRange, nameof(StickDeadZone), corrected);
+            ScrollDeadZone = CheckRange(ScrollDeadZone, ScrollDeadZoneRange, nameof(ScrollDeadZone), corrected);
+            KeyboardDeadZone = CheckRange(KeyboardDeadZone, KeyboardDeadZoneRange, nameof(KeyboardDeadZone), corrected);
+            StickSensitivity = CheckRange(StickSensitivity, defaults.StickSensitivity, StickSensitivityRange, nameof(StickSensitivity), corrected);
+            StickAccelPower = CheckRange(StickAccelPower, defaults.StickAccelPower, StickAccelPowerRange, nameof(StickAccelPower), corrected);
+            StickRampSeconds = CheckRange(StickRampSeconds, defaults.StickRampSeconds, StickRampSecondsRange, nameof(StickRampSeconds), corrected);
+            TouchpadSpeed = CheckRange(TouchpadSpeed, TouchpadSpeedRange, nameof(TouchpadSpeed), corrected);
+            WatchedProcessNames = CheckList(WatchedProcessNames, defaults.WatchedProcessNames, nameof(WatchedProcessNames), corrected);
+            StreamingServiceNames = CheckList(StreamingServiceNames, defaults.StreamingServiceNames, nameof(StreamingServiceNames), corrected);
+
+            return corrected;
+        }
+
+        private static int CheckRange(int value, SettingRange range, string name, List<string> corrected)
+        {
+            if (range.Contains(value))
+                return value;
+            corrected.Add(name);
+            return range.Clamp(value);
+        }
+
+        private static float CheckRange(float value, float fallback, SettingRange range, string name, List<string> corrected)
+        {
+            if (range.Contains(value))
+                return value;
+            corrected.Add(name);
+            return range.Clamp(value, fallback);
+        }
+
+        // JSON null binds straight through the non-nullable annotation, so both the list and its entries are checked.
+        private static List<string> CheckList(List<string>? items, List<string> fallback, string name, List<string> corrected)
+        {
+            if (items == null)
+            {
+                corrected.Add(name);
+                return fallback;
+            }
+
+            if (items.TrueForAll(item => !string.IsNullOrWhiteSpace(item)))
+                return items;
+
+            corrected.Add(name);
+            return items.FindAll(item => !string.IsNullOrWhiteSpace(item));
+        }
 
         public void Save()
         {

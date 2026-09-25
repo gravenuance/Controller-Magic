@@ -14,7 +14,11 @@ internal enum SettingsFileState
 }
 
 internal sealed record ParsedSettings(
-    AppSettings Settings, SettingsFileState State, int FileVersion, IReadOnlyList<string> DroppedFields);
+    AppSettings Settings,
+    SettingsFileState State,
+    int FileVersion,
+    IReadOnlyList<string> DroppedFields,
+    IReadOnlyList<string> CorrectedFields);
 
 // Reads, migrates and writes settings.json. Nothing the user saved is ever discarded without a
 // copy on disk first, and a file from a newer build is never written over.
@@ -115,6 +119,9 @@ internal sealed class SettingsStore
         else if (parsed.DroppedFields.Count > 0)
             _log.Warning($"Settings: {source} had unusable values for {string.Join(", ", parsed.DroppedFields)}; using defaults for those");
 
+        if (parsed.CorrectedFields.Count > 0)
+            _log.Warning($"Settings: {source} had out-of-range values for {string.Join(", ", parsed.CorrectedFields)}; corrected them");
+
         bool needsWrite = isLegacy || lostData || parsed.State == SettingsFileState.Older;
         if (needsWrite && Save(settings) && isLegacy)
             TryDeleteLegacyFile(source);
@@ -163,14 +170,14 @@ internal sealed class SettingsStore
         }
 
         if (root == null || !TryReadSchemaVersion(root, out int version))
-            return new(AppSettings.CreateDefault(), SettingsFileState.Unreadable, 0, []);
+            return new(AppSettings.CreateDefault(), SettingsFileState.Unreadable, 0, [], []);
 
         if (version > AppSettings.CurrentSchemaVersion)
         {
             // The newer build already set startup up; redoing it here would re-enable it.
             var defaults = AppSettings.CreateDefault();
             defaults.HasInitializedStartup = true;
-            return new(defaults, SettingsFileState.Newer, version, []);
+            return new(defaults, SettingsFileState.Newer, version, [], []);
         }
 
         for (int step = version; step < AppSettings.CurrentSchemaVersion; step++)
@@ -180,10 +187,11 @@ internal sealed class SettingsStore
         var dropped = new List<string>();
         var settings = Bind(root, dropped);
         if (settings == null)
-            return new(AppSettings.CreateDefault(), SettingsFileState.Unreadable, version, []);
+            return new(AppSettings.CreateDefault(), SettingsFileState.Unreadable, version, [], []);
 
+        var corrected = settings.Validate();
         var state = version < AppSettings.CurrentSchemaVersion ? SettingsFileState.Older : SettingsFileState.Current;
-        return new(settings, state, version, dropped);
+        return new(settings, state, version, dropped, corrected);
     }
 
     private static bool TryReadSchemaVersion(JsonObject root, out int version)
