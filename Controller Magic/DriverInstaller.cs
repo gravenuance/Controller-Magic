@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using Nefarius.Drivers.HidHide;
 
@@ -10,6 +11,7 @@ internal enum InstallOutcome
     Success,
     RebootRequired,
     NetworkError,
+    DiskError,
     SignatureVerificationFailed,
     ElevationDeclined,
     InstallFailed,
@@ -31,6 +33,10 @@ internal static class DriverInstaller
     // Leftovers of the old cmd-script install, which this replaced.
     private static readonly string[] ObsoleteFiles = ["install.cmd", "hidhide.exitcode", "vigem.exitcode"];
 
+    // Generous for a few-MB installer on a slow link, while still ending a stalled transfer.
+    private static readonly TimeSpan DownloadTimeout = TimeSpan.FromMinutes(5);
+
+    // Two long-lived clients rather than one: HidHideSetupProvider needs its own base address and headers.
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromMinutes(3) };
 
     // HidHideSetupProvider doesn't work with a bare HttpClient - it expects one pre-configured
@@ -70,31 +76,25 @@ internal static class DriverInstaller
         if (drivers == DriverKinds.None)
             return new InstallResult(InstallOutcome.Success);
 
-        Directory.CreateDirectory(DriversDirectory);
-        DeleteObsoleteFiles();
         string? hidHidePath = drivers.HasFlag(DriverKinds.HidHide) ? Path.Combine(DriversDirectory, DriverPackages.HidHideFileName) : null;
         string? vigemPath = drivers.HasFlag(DriverKinds.Vigem) ? Path.Combine(DriversDirectory, DriverPackages.VigemFileName) : null;
 
         progress?.Report("Downloading...");
         try
         {
+            Directory.CreateDirectory(DriversDirectory);
+            DeleteObsoleteFiles();
             if (hidHidePath != null)
                 await DownloadHidHideAsync(hidHidePath, ct).ConfigureAwait(false);
             if (vigemPath != null)
                 await DownloadAsync(VigemBusInstallerUrl, vigemPath, ct).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
         {
-            // Caught broadly rather than just HttpRequestException/TaskCanceledException/IOException:
-            // a third-party HTTP client (HidHideSetupProvider) can fail in ways this app can't fully
-            // enumerate up front, and none of them should crash it - only genuinely network-shaped
-            // failures get the more actionable "No network" outcome, everything else falls back to a
-            // generic one.
+            // Caught broadly: a third-party HTTP client (HidHideSetupProvider) can fail in ways this
+            // app can't fully enumerate up front, and none of them should crash it.
             AppLog.Default.Warning("DriverInstaller: download failed", ex);
-            var outcome = ex is HttpRequestException or TaskCanceledException or IOException
-                ? InstallOutcome.NetworkError
-                : InstallOutcome.InstallFailed;
-            return new InstallResult(outcome, ex.Message);
+            return new InstallResult(ClassifyDownloadFailure(ex), ex.Message);
         }
 
         // Only spares the user a pointless UAC prompt; the elevated copy re-verifies what it runs.
@@ -112,22 +112,93 @@ internal static class DriverInstaller
 
     private static async Task DownloadAsync(string url, string destinationPath, CancellationToken ct)
     {
-        using var response = await Client.GetAsync(new Uri(url), HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        using var timeout = StartDownloadTimeout(ct);
+        using var response = await Client.GetAsync(new Uri(url), HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        using var fileStream = File.Create(destinationPath);
-        await response.Content.CopyToAsync(fileStream, ct).ConfigureAwait(false);
+        await SaveAsync(response.Content, destinationPath, DriverPackages.MaxInstallerBytes, timeout.Token).ConfigureAwait(false);
     }
 
     // HidHide ships its own setup-provider specifically so callers don't have to hardcode a
     // version/URL that goes stale - always fetches whatever is currently the latest release.
     private static async Task DownloadHidHideAsync(string destinationPath, CancellationToken ct)
     {
+        using var timeout = StartDownloadTimeout(ct);
         var provider = new HidHideSetupProvider(HidHideClient);
-        using var response = await provider.DownloadLatestReleaseAsync(ct).ConfigureAwait(false);
+        using var response = await provider.DownloadLatestReleaseAsync(timeout.Token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        using var fileStream = File.Create(destinationPath);
-        await response.Content.CopyToAsync(fileStream, ct).ConfigureAwait(false);
+        await SaveAsync(response.Content, destinationPath, DriverPackages.MaxInstallerBytes, timeout.Token).ConfigureAwait(false);
     }
+
+    // HttpClient.Timeout stops at the response headers, so this is what bounds a stalled body.
+    private static CancellationTokenSource StartDownloadTimeout(CancellationToken ct)
+    {
+        var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(DownloadTimeout);
+        return timeout;
+    }
+
+    // Streams into "<name>.part" and renames only once complete and within maxBytes, so an
+    // interrupted or oversized download never leaves a file that looks finished.
+    internal static async Task SaveAsync(HttpContent content, string destinationPath, long maxBytes, CancellationToken ct)
+    {
+        if (content.Headers.ContentLength > maxBytes)
+            throw new InvalidDataException($"Download is {content.Headers.ContentLength} bytes; the limit is {maxBytes}.");
+
+        string partPath = destinationPath + ".part";
+        try
+        {
+            var body = await content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            await using (body.ConfigureAwait(false))
+            {
+                var file = new FileStream(partPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
+                await using (file.ConfigureAwait(false))
+                    await CopyBoundedAsync(body, file, maxBytes, ct).ConfigureAwait(false);
+            }
+
+            File.Move(partPath, destinationPath, overwrite: true);
+        }
+        catch
+        {
+            TryDeletePartial(partPath);
+            throw;
+        }
+    }
+
+    private static async Task CopyBoundedAsync(Stream source, Stream destination, long maxBytes, CancellationToken ct)
+    {
+        byte[] buffer = new byte[81920];
+        long total = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+        {
+            total += read;
+            if (total > maxBytes)
+                throw new InvalidDataException($"Download exceeded the {maxBytes}-byte limit.");
+            await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+        }
+    }
+
+    private static void TryDeletePartial(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Default.Warning($"DriverInstaller: failed to remove partial download {path}", ex);
+        }
+    }
+
+    // Only transport failures mean "no network"; a full disk or locked file gets its own message.
+    // HttpIOException is an IOException, so network checks have to come first.
+    internal static InstallOutcome ClassifyDownloadFailure(Exception ex) => ex switch
+    {
+        HttpRequestException or HttpIOException or TimeoutException or OperationCanceledException => InstallOutcome.NetworkError,
+        IOException { InnerException: SocketException } => InstallOutcome.NetworkError,
+        IOException or UnauthorizedAccessException => InstallOutcome.DiskError,
+        _ => InstallOutcome.InstallFailed,
+    };
 
     private static void DeleteObsoleteFiles()
     {

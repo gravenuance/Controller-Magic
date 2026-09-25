@@ -62,6 +62,9 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - Installing the HidHide drivers failed when the Windows user folder had non-ASCII characters in
   its name.
 - Checking a driver installer's signature leaked a little memory each time.
+- A full disk or locked file while downloading the HidHide drivers was reported as "No network".
+  It now says the drivers couldn't be saved. A download that stalls now gives up after a few
+  minutes instead of waiting forever, and an unexpectedly large one is refused.
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the

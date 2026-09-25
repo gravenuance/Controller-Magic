@@ -594,6 +594,7 @@ namespace ControllerMagic
                         {
                             InstallOutcome.ElevationDeclined => "Elevation was cancelled.",
                             InstallOutcome.NetworkError => "No network - couldn't download drivers.",
+                            InstallOutcome.DiskError => "Couldn't save drivers - check disk space.",
                             InstallOutcome.SignatureVerificationFailed => "Driver signature check failed.",
                             _ => "Driver install failed - see log.",
                         };
