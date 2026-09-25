@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 namespace ControllerMagic
 {
@@ -421,13 +420,7 @@ namespace ControllerMagic
                 // all four sides. Matching width/height alone (the old check) can also be true for
                 // a window that's merely the right size but positioned elsewhere - e.g. straddling
                 // a monitor boundary - without actually covering any single monitor.
-                bool isFullscreen = Screen.AllScreens.Any(s =>
-                    rect.Left == s.Bounds.Left &&
-                    rect.Top == s.Bounds.Top &&
-                    rect.Right == s.Bounds.Right &&
-                    rect.Bottom == s.Bounds.Bottom);
-
-                if (!isFullscreen)
+                if (!MatchesAScreen(rect))
                 {
                     _watching = false;
                     _streaming = false;
@@ -435,17 +428,12 @@ namespace ControllerMagic
                 }
 
                 _ = GetWindowThreadProcessId(hWnd, out int pid);
-                try
+                string? name = ProcessNames.NameFor(hWnd, pid);
+                if (name != null)
                 {
-                    using var proc = Process.GetProcessById(pid);
-                    string name = proc.ProcessName.ToLowerInvariant();
                     string title = GetWindowTitle(hWnd);
 
-                    // OrdinalIgnoreCase against the raw (non-lowercased) watched name instead of
-                    // lowercasing it first - same match, one fewer string allocation per entry per
-                    // check.
-                    _watching = AppSettings.Instance.WatchedProcessNames
-                        .Any(w => !string.IsNullOrWhiteSpace(w) && name.Contains(w.Trim(), StringComparison.OrdinalIgnoreCase));
+                    _watching = ContainsAny(name, AppSettings.Instance.WatchedProcessNames);
 
                     // 'S' (Skip Intro) only makes sense for actual streaming services: something
                     // with a known streaming service name in its title, or Edge itself, since the
@@ -453,19 +441,42 @@ namespace ControllerMagic
                     // are usually just an Edge WebView host under the hood and don't always surface
                     // the service name in their title.
                     _streaming = name.Contains("edge", StringComparison.OrdinalIgnoreCase) ||
-                        AppSettings.Instance.StreamingServiceNames
-                            .Any(s => !string.IsNullOrWhiteSpace(s) && title.Contains(s.Trim(), StringComparison.OrdinalIgnoreCase));
+                        ContainsAny(title, AppSettings.Instance.StreamingServiceNames);
 
                     if (_watching || _streaming)
                         return false;
-                }
-                catch
-                {
                 }
 
                 _watching = false;
                 _streaming = false;
                 return true;
+            }
+
+            private static readonly ProcessNameCache ProcessNames = new();
+
+            private static bool MatchesAScreen(RECT rect)
+            {
+                foreach (var screen in Screen.AllScreens)
+                {
+                    var bounds = screen.Bounds;
+                    if (rect.Left == bounds.Left && rect.Top == bounds.Top && rect.Right == bounds.Right && rect.Bottom == bounds.Bottom)
+                        return true;
+                }
+
+                return false;
+            }
+
+            // Case-insensitive, ignoring blank and padded entries, without allocating per entry.
+            private static bool ContainsAny(string text, List<string> needles)
+            {
+                foreach (string needle in needles)
+                {
+                    var trimmed = needle.AsSpan().Trim();
+                    if (!trimmed.IsEmpty && text.AsSpan().Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+
+                return false;
             }
 
             private static string GetWindowTitle(IntPtr hWnd)
