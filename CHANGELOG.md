@@ -110,6 +110,9 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   dialog. It's now logged with a short message under the switch. Closing Settings during a
   driver download stops it, and a second click can't start a second install.
 - Each time Settings was opened, a font was created and never freed.
+- In the "Full-screen apps" lists, the add box lost focus after each entry, so every new entry
+  needed another click. Entries can now also be removed from the keyboard: Tab to one and press
+  Delete, Backspace, Enter or Space. Screen readers announce each as "Remove <name>".
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the

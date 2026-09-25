@@ -670,7 +670,7 @@ namespace ControllerMagic
                 TabIndex = _nextTabIndex++,
                 AccessibleName = label,
             };
-            chips.ApplyPalette(Theme.Bg, Theme.Line, Theme.Ink, Theme.Muted, Theme.Surface2);
+            chips.ApplyPalette(Theme.Bg, Theme.Line, Theme.Ink, Theme.Muted, Theme.Surface2, Theme.Accent);
             chips.SetItems(initialItems);
             chips.ItemsChanged += items =>
             {

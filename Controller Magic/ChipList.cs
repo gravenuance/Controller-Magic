@@ -1,7 +1,8 @@
 namespace ControllerMagic
 {
     // Comma-separated text was hard to scan and fiddly to edit; this shows each entry as a
-    // removable chip with a trailing text box to add new ones (Enter commits).
+    // removable chip with a trailing text box to add new ones (Enter commits). Adding or removing
+    // touches only that one chip, so the add box keeps focus between entries.
     internal sealed class ChipList : FlowLayoutPanel
     {
         private readonly List<string> _items = new();
@@ -13,6 +14,7 @@ namespace ControllerMagic
         public Color ChipBorder { get; set; } = Color.FromArgb(0x2C, 0x30, 0x38);
         public Color ChipText { get; set; } = Color.FromArgb(0xE8, 0xEA, 0xED);
         public Color MutedText { get; set; } = Color.FromArgb(0x86, 0x8F, 0xA0);
+        public Color FocusColor { get; set; } = Color.FromArgb(0xE8, 0xA3, 0x3D);
 
         public List<string> Items => new(_items);
 
@@ -30,7 +32,8 @@ namespace ControllerMagic
                 BorderStyle = BorderStyle.None,
                 Width = 110,
                 Margin = new Padding(4, 6, 3, 3),
-                PlaceholderText = "+ add…"
+                PlaceholderText = "+ add…",
+                AccessibleName = "Add entry",
             };
             _addBox.KeyDown += (_, e) =>
             {
@@ -43,14 +46,16 @@ namespace ControllerMagic
                     _addBox.Clear();
                 }
             };
+            Controls.Add(_addBox);
         }
 
-        public void ApplyPalette(Color chipBg, Color chipBorder, Color chipText, Color muted, Color fieldBg)
+        public void ApplyPalette(Color chipBg, Color chipBorder, Color chipText, Color muted, Color fieldBg, Color focus)
         {
             ChipBg = chipBg;
             ChipBorder = chipBorder;
             ChipText = chipText;
             MutedText = muted;
+            FocusColor = focus;
             BackColor = fieldBg;
             _addBox.BackColor = fieldBg;
             _addBox.ForeColor = chipText;
@@ -58,9 +63,22 @@ namespace ControllerMagic
 
         public void SetItems(IEnumerable<string> items)
         {
+            ArgumentNullException.ThrowIfNull(items);
+
+            SuspendLayout();
+            foreach (var chip in Controls.OfType<Chip>().ToList())
+            {
+                Controls.Remove(chip);
+                chip.Dispose();
+            }
+
             _items.Clear();
-            _items.AddRange(items);
-            Rebuild();
+            foreach (var item in items)
+            {
+                _items.Add(item);
+                InsertChip(item);
+            }
+            ResumeLayout();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -70,49 +88,53 @@ namespace ControllerMagic
             e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
         }
 
-        private void AddItem(string item)
+        internal void AddItem(string item)
         {
             if (_items.Any(i => string.Equals(i, item, StringComparison.OrdinalIgnoreCase)))
                 return;
 
             _items.Add(item);
-            Rebuild();
+            InsertChip(item);
             ItemsChanged?.Invoke(Items);
         }
 
-        private void RemoveItem(string item)
+        // Chips sit before the add box, in item order.
+        private void InsertChip(string item)
         {
-            _items.Remove(item);
-            Rebuild();
-            ItemsChanged?.Invoke(Items);
-        }
-
-        private void Rebuild()
-        {
-            SuspendLayout();
-
-            // Controls.Clear() only unparents children, it doesn't Dispose() them - left alone,
-            // every add/remove here would leak the previous batch of Chip controls (and their
-            // native window handles) instead of freeing them.
-            foreach (Control c in Controls.Cast<Control>().Where(c => c != _addBox).ToList())
-                c.Dispose();
-            Controls.Clear();
-
-            foreach (var item in _items)
+            var chip = new Chip(item)
             {
-                var chip = new Chip(item)
-                {
-                    ChipBg = ChipBg,
-                    ChipBorder = ChipBorder,
-                    ChipText = ChipText,
-                    MutedText = MutedText
-                };
-                chip.RemoveRequested += () => RemoveItem(item);
-                Controls.Add(chip);
-            }
-            Controls.Add(_addBox);
-            ResumeLayout();
-            Invalidate();
+                ChipBg = ChipBg,
+                ChipBorder = ChipBorder,
+                ChipText = ChipText,
+                MutedText = MutedText,
+                FocusColor = FocusColor,
+            };
+            chip.RemoveRequested += RemoveChip;
+            Controls.Add(chip);
+            Controls.SetChildIndex(chip, Controls.GetChildIndex(_addBox));
+        }
+
+        private void RemoveChip(Chip chip)
+        {
+            int index = Controls.GetChildIndex(chip, throwException: false);
+            if (index < 0)
+                return;
+
+            bool hadFocus = chip.ContainsFocus;
+            _items.RemoveAt(index);
+            Controls.Remove(chip);
+
+            // Keyboard removal hands focus to the next chip, or the add box after the last one.
+            if (hadFocus)
+                Controls[Math.Min(index, Controls.Count - 1)].Focus();
+
+            // The chip is still inside its own click or key handler; dispose once that unwinds.
+            if (chip.IsHandleCreated)
+                chip.BeginInvoke(chip.Dispose);
+            else
+                chip.Dispose();
+
+            ItemsChanged?.Invoke(Items);
         }
     }
 }

@@ -4,35 +4,65 @@ namespace ControllerMagic
 {
     // One removable pill in a ChipList. Self-draws its own "x" glyph rather than composing a
     // separate button, so remove-hit-testing is just "did the click land in the glyph rectangle."
+    // Also a tab stop: Delete, Backspace, Enter or Space removes it from the keyboard.
     internal sealed class Chip : Control
     {
-        public event Action? RemoveRequested;
+        public event Action<Chip>? RemoveRequested;
 
-        private Rectangle _closeHit;
-        private static readonly Font MonoFont = new("Consolas", 8.25f);
+        // Follows the chip's current size, which DPI changes and autoscaling can alter after construction.
+        private Rectangle CloseHit => new(Width - 20, 3, 16, 16);
 
         public Color ChipBg { get; set; } = Color.FromArgb(0x14, 0x16, 0x1A);
         public Color ChipBorder { get; set; } = Color.FromArgb(0x2C, 0x30, 0x38);
         public Color ChipText { get; set; } = Color.FromArgb(0xE8, 0xEA, 0xED);
         public Color MutedText { get; set; } = Color.FromArgb(0x86, 0x8F, 0xA0);
+        public Color FocusColor { get; set; } = Color.FromArgb(0xE8, 0xA3, 0x3D);
 
         public Chip(string text)
         {
             Text = text;
-            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.Selectable, true);
+            TabStop = true;
             Margin = new Padding(3);
             Height = 22;
             AccessibleRole = AccessibleRole.PushButton;
             AccessibleName = $"Remove {text}";
+            AccessibleDefaultActionDescription = "Remove";
 
-            // CreateGraphics() would measure against the same real-screen DPI, but as a side
-            // effect it also forces this control's native window handle into existence right here
-            // in the constructor, before it's ever parented or shown - wasteful given ChipList
-            // rebuilds its whole Chip collection on every add/remove. The desktop DC measures
-            // identically without touching this control's handle at all.
+            // The desktop DC measures the same as CreateGraphics() without forcing this control's
+            // window handle into existence before it's even parented.
             using var g = Graphics.FromHwnd(IntPtr.Zero);
-            var textSize = g.MeasureString(Text, MonoFont);
+            var textSize = g.MeasureString(Text, Theme.ChipFont);
             Width = (int)textSize.Width + 9 + 22;
+        }
+
+        internal static bool IsRemoveKey(Keys key) => key is Keys.Delete or Keys.Back or Keys.Enter or Keys.Space;
+
+        internal void RequestRemove() => RemoveRequested?.Invoke(this);
+
+        protected override bool IsInputKey(Keys keyData) => IsRemoveKey(keyData) || base.IsInputKey(keyData);
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.Handled || !IsRemoveKey(e.KeyData))
+                return;
+
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            RequestRemove();
+        }
+
+        protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+        protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+
+        protected override AccessibleObject CreateAccessibilityInstance() => new ChipAccessibleObject(this);
+
+        // Lets a screen reader's "activate" remove the chip, matching its "Remove <name>" label.
+        private sealed class ChipAccessibleObject(Chip owner) : ControlAccessibleObject(owner)
+        {
+            public override void DoDefaultAction() => owner.RequestRemove();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -46,23 +76,22 @@ namespace ControllerMagic
             {
                 using var bgBrush = new SolidBrush(ChipBg);
                 g.FillPath(bgBrush, path);
-                using var borderPen = new Pen(ChipBorder);
+                using var borderPen = new Pen(Focused ? FocusColor : ChipBorder, Focused ? 1.5f : 1f);
                 g.DrawPath(borderPen, path);
             }
 
             using (var textBrush = new SolidBrush(ChipText))
-                g.DrawString(Text, MonoFont, textBrush, 9, (Height - MonoFont.Height) / 2f - 1);
+                g.DrawString(Text, Theme.ChipFont, textBrush, 9, (Height - Theme.ChipFont.Height) / 2f - 1);
 
-            _closeHit = new Rectangle(Width - 20, 3, 16, 16);
-            bool hover = _closeHit.Contains(PointToClient(MousePosition));
-            if (hover)
+            bool highlight = Focused || CloseHit.Contains(PointToClient(MousePosition));
+            if (highlight)
             {
                 using var hoverBrush = new SolidBrush(ChipBorder);
-                g.FillEllipse(hoverBrush, _closeHit);
+                g.FillEllipse(hoverBrush, CloseHit);
             }
 
-            using var xPen = new Pen(hover ? ChipText : MutedText, 1.3f);
-            int cx = _closeHit.X + _closeHit.Width / 2, cy = _closeHit.Y + _closeHit.Height / 2;
+            using var xPen = new Pen(highlight ? ChipText : MutedText, 1.3f);
+            int cx = CloseHit.X + CloseHit.Width / 2, cy = CloseHit.Y + CloseHit.Height / 2;
             g.DrawLine(xPen, cx - 3, cy - 3, cx + 3, cy + 3);
             g.DrawLine(xPen, cx - 3, cy + 3, cx + 3, cy - 3);
         }
@@ -70,7 +99,7 @@ namespace ControllerMagic
         protected override void OnMouseMove(MouseEventArgs e)
         {
             Invalidate();
-            Cursor = _closeHit.Contains(e.Location) ? Cursors.Hand : Cursors.Default;
+            Cursor = CloseHit.Contains(e.Location) ? Cursors.Hand : Cursors.Default;
             base.OnMouseMove(e);
         }
 
@@ -80,11 +109,11 @@ namespace ControllerMagic
             base.OnMouseLeave(e);
         }
 
-        protected override void OnClick(EventArgs e)
+        protected override void OnMouseClick(MouseEventArgs e)
         {
-            if (_closeHit.Contains(PointToClient(MousePosition)))
-                RemoveRequested?.Invoke();
-            base.OnClick(e);
+            base.OnMouseClick(e);
+            if (e.Button == MouseButtons.Left && CloseHit.Contains(e.Location))
+                RequestRemove();
         }
     }
 }
