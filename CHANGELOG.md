@@ -109,6 +109,7 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - An error while checking or installing the HidHide drivers in Settings brought up the crash
   dialog. It's now logged with a short message under the switch. Closing Settings during a
   driver download stops it, and a second click can't start a second install.
+- Each time Settings was opened, a font was created and never freed.
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the

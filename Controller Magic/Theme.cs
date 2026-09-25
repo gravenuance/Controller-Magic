@@ -22,6 +22,7 @@ namespace ControllerMagic
         public static readonly Font CaptionFont = new("Segoe UI Semibold", 7.75f, FontStyle.Regular);
         public static readonly Font MonoFont = new("Consolas", 8.75f, FontStyle.Regular);
         public static readonly Font EmojiFont = new("Segoe UI Emoji", 10f, FontStyle.Regular);
+        public static readonly Font GlyphFont = new("Segoe UI", 9f, FontStyle.Regular);
 
         // Segoe MDL2 Assets/Fluent Icons - Windows' own icon glyph font, bundled since Windows 10.
         // Single-color line-style glyphs at a small size read as "icon", not "text", which is what

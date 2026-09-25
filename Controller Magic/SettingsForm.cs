@@ -224,7 +224,7 @@ namespace ControllerMagic
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 TextAlign = ContentAlignment.MiddleCenter,
                 ForeColor = Theme.Muted,
-                Font = new Font("Segoe UI", 9f),
+                Font = Theme.GlyphFont,
                 Cursor = Cursors.Hand,
                 TabIndex = _nextTabIndex++,
             };
