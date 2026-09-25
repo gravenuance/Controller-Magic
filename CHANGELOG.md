@@ -8,6 +8,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-25
+
 ### Changed
 - Less CPU use when no Xbox controller is plugged in: empty controller slots are checked once a
   second instead of 125 times. A newly plugged Xbox controller is picked up within a second.
