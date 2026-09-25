@@ -34,6 +34,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - A Switch Pro Controller or Joy-Con over Bluetooth no longer has its motion sensor switched on
   and its reports forced to 60 a second, which drained its battery. The Bluetooth range guard now
   covers PlayStation controllers only.
+- The lightbar's orange and green are dimmed to the brightness of SDL's own player colours, so a
+  PlayStation controller's battery lasts longer. The colours themselves are unchanged.
 
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen

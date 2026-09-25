@@ -35,6 +35,26 @@ public class ControllerLightsTests
     }
 
     [Theory]
+    [InlineData(nameof(ControllerMode.Mouse), 0xFF, 0x60, 0x00)]
+    [InlineData(nameof(ControllerMode.Keyboard), 0x00, 0xFF, 0x40)]
+    [InlineData(nameof(ControllerMode.Suspended), 0x00, 0x00, 0x40)]
+    public void ColorFor_KeepsEachModesHueButNoBrighterThanSdlsOwnColours(string mode, int r, int g, int b)
+    {
+        var c = ControllerLights.ColorFor(Enum.Parse<ControllerMode>(mode));
+
+        Assert.Equal(0x40, Math.Max(c.R, Math.Max(c.G, c.B)));
+        Assert.Equal(Color.FromArgb(r, g, b).GetHue(), c.GetHue(), 1.5f);
+    }
+
+    [Fact]
+    public void ScaleToPeak_ScalesEveryChannelByTheSameFactor()
+    {
+        var c = ControllerLights.ScaleToPeak(Color.FromArgb(0xC0, 0x60, 0x30), 0x40);
+
+        Assert.Equal(Color.FromArgb(0x40, 0x20, 0x10).ToArgb(), c.ToArgb());
+    }
+
+    [Theory]
     [InlineData(nameof(BatteryLevel.Unknown), 0)]
     [InlineData(nameof(BatteryLevel.Empty), 1)]
     [InlineData(nameof(BatteryLevel.Low), 2)]
