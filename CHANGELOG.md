@@ -59,6 +59,13 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   app from reading its own virtual pad, until the clock caught up again.
 - The app's own resource check opened a process handle twice a second and left it for the garbage
   collector to close.
+- Installing the HidHide drivers failed when the Windows user folder had non-ASCII characters in
+  its name.
+
+### Security
+- Driver installers could be swapped by another program between the signature check and the
+  admin prompt. The admin prompt now names Controller Magic itself, which copies the installers
+  into a folder only administrators can change, checks the signature there, and runs them.
 
 ## [1.8.0] - 2026-09-24
 

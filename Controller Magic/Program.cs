@@ -13,15 +13,23 @@ namespace ControllerMagic
 {
     internal static class Program
     {
-        private static readonly Mutex _mutex = new(true, "ControllerMagic-69F2B9E1-7C2E-4C11-9C1A-ABCDEF123456", out _);
+        private const string SingleInstanceMutexName = "ControllerMagic-69F2B9E1-7C2E-4C11-9C1A-ABCDEF123456";
+
         [STAThread]
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
+            // Checked before the single-instance mutex: the elevated driver installer is a second
+            // copy of the app launched by the running one, and must neither be blocked by it nor
+            // start a tray icon of its own.
+            if (DriverInstallProtocol.IsInstallCommand(args))
+                return ElevatedDriverInstall.Run(args);
+
             // A second launch (double-clicked by hand, triggered by the startup task, whatever)
             // just quietly exits - the app is already running, and a "did you know" dialog isn't
             // worth interrupting whatever the user's doing for.
-            if (!_mutex.WaitOne(0, false))
-                return;
+            using var singleInstance = new Mutex(true, SingleInstanceMutexName, out bool createdNew);
+            if (!createdNew)
+                return 0;
 
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) => HandleFatalException(e.Exception);
@@ -53,6 +61,7 @@ namespace ControllerMagic
             var context = new TrayApplicationContext();
 #pragma warning restore CA2000
             Application.Run(context);
+            return 0;
         }
 
         // Background threads (e.g. the controller poll loop) crash the whole process on an

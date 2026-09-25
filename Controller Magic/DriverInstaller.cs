@@ -21,10 +21,6 @@ internal readonly record struct InstallResult(InstallOutcome Outcome, string? De
 // behind a single UAC prompt, the first time the "Use HidHide" toggle needs them.
 internal static class DriverInstaller
 {
-    // Windows Installer's well-known "succeeded, but a reboot is needed to finish" exit code -
-    // both installers are Advanced-Installer-built (MSI-compatible), so this applies to either.
-    private const int ErrorSuccessRebootRequired = 3010;
-
     // ViGEmBus is archived/unmaintained (no setup-provider library like HidHide's), so its
     // installer is pinned to the latest real release as of this writing rather than resolved
     // dynamically - confirmed live against github.com/nefarius/ViGEmBus/releases at the time this
@@ -32,18 +28,8 @@ internal static class DriverInstaller
     private const string VigemBusInstallerUrl =
         "https://github.com/nefarius/ViGEmBus/releases/download/v1.22.0/ViGEmBus_1.22.0_x64_x86_arm64.exe";
 
-    // Confirmed by inspecting the Authenticode signature on the real installers for both projects
-    // (same certificate, thumbprint 1F431092EC96A80B41AB5317F53AC02EA6F9B89B) - this is the
-    // Common Name AuthenticodeVerifier checks against, not the full certificate subject.
-    private const string ExpectedSigner = "Nefarius Software Solutions e.U.";
-
-    // Advanced Installer's EXE bootstrapper forwards unrecognized switches to the underlying
-    // msiexec, so this is standard MSI silent-install syntax. /norestart is not optional: without
-    // it, a driver install that needs a reboot to finish just reboots the machine immediately and
-    // unprompted - confirmed the hard way on a real machine before this was added. Exit code 3010
-    // (ErrorSuccessRebootRequired) still shows up when a reboot is genuinely needed; it's read
-    // back and surfaced to the user instead of either rebooting or silently ignoring it.
-    private const string SilentInstallArgs = "/exenoui /qn /norestart";
+    // Leftovers of the old cmd-script install, which this replaced.
+    private static readonly string[] ObsoleteFiles = ["install.cmd", "hidhide.exitcode", "vigem.exitcode"];
 
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromMinutes(3) };
 
@@ -65,6 +51,7 @@ internal static class DriverInstaller
             "X-Vicius-OS-Architecture", RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant());
     }
 
+    // Only a download cache: the elevated install copies from here into an admin-only directory.
     private static string DriversDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ControllerMagic", "drivers");
 
@@ -74,15 +61,19 @@ internal static class DriverInstaller
     // reboot) is never re-downloaded or re-run.
     public static async Task<InstallResult> InstallAsync(DriverStatus currentStatus, IProgress<string>? progress, CancellationToken ct)
     {
-        bool needHidHide = !currentStatus.HidHideInstalled;
-        bool needVigem = !currentStatus.VigemInstalled;
+        var drivers = DriverKinds.None;
+        if (!currentStatus.HidHideInstalled)
+            drivers |= DriverKinds.HidHide;
+        if (!currentStatus.VigemInstalled)
+            drivers |= DriverKinds.Vigem;
 
-        if (!needHidHide && !needVigem)
+        if (drivers == DriverKinds.None)
             return new InstallResult(InstallOutcome.Success);
 
         Directory.CreateDirectory(DriversDirectory);
-        string? hidHidePath = needHidHide ? Path.Combine(DriversDirectory, "HidHideSetup.exe") : null;
-        string? vigemPath = needVigem ? Path.Combine(DriversDirectory, "ViGEmBusSetup.exe") : null;
+        DeleteObsoleteFiles();
+        string? hidHidePath = drivers.HasFlag(DriverKinds.HidHide) ? Path.Combine(DriversDirectory, DriverPackages.HidHideFileName) : null;
+        string? vigemPath = drivers.HasFlag(DriverKinds.Vigem) ? Path.Combine(DriversDirectory, DriverPackages.VigemFileName) : null;
 
         progress?.Report("Downloading...");
         try
@@ -106,16 +97,17 @@ internal static class DriverInstaller
             return new InstallResult(outcome, ex.Message);
         }
 
+        // Only spares the user a pointless UAC prompt; the elevated copy re-verifies what it runs.
         progress?.Report("Verifying...");
-        if ((hidHidePath != null && !AuthenticodeVerifier.IsSignedBy(hidHidePath, ExpectedSigner)) ||
-            (vigemPath != null && !AuthenticodeVerifier.IsSignedBy(vigemPath, ExpectedSigner)))
+        if ((hidHidePath != null && !AuthenticodeVerifier.IsSignedBy(hidHidePath, DriverPackages.ExpectedSigner)) ||
+            (vigemPath != null && !AuthenticodeVerifier.IsSignedBy(vigemPath, DriverPackages.ExpectedSigner)))
         {
             AppLog.Default.Warning("DriverInstaller: a downloaded installer failed signature verification");
             return new InstallResult(InstallOutcome.SignatureVerificationFailed);
         }
 
         progress?.Report("Installing (approve the prompt)...");
-        return await RunElevatedInstallAsync(hidHidePath, vigemPath, ct).ConfigureAwait(false);
+        return await RunElevatedInstallAsync(drivers, ct).ConfigureAwait(false);
     }
 
     private static async Task DownloadAsync(string url, string destinationPath, CancellationToken ct)
@@ -137,40 +129,34 @@ internal static class DriverInstaller
         await response.Content.CopyToAsync(fileStream, ct).ConfigureAwait(false);
     }
 
-    // A single elevated script runs whichever installer(s) are needed back-to-back, so the user
-    // sees exactly one UAC prompt no matter how many drivers are missing - a temp .cmd file
-    // avoids the quoting hazards of building one "cmd /c ... && ..." string for paths that may
-    // contain spaces (a username with a space in it puts one in %LocalAppData% itself). Each
-    // installer's own %errorlevel% is captured to a marker file immediately after it runs,
-    // because cmd.exe's own exit code for the whole script is only ever the *last* command's -
-    // without this, a failing first installer followed by a succeeding second one would look
-    // like a clean success.
-    private static async Task<InstallResult> RunElevatedInstallAsync(string? hidHidePath, string? vigemPath, CancellationToken ct)
+    private static void DeleteObsoleteFiles()
     {
-        string scriptPath = Path.Combine(DriversDirectory, "install.cmd");
-        string? hidHideExitPath = hidHidePath != null ? Path.Combine(DriversDirectory, "hidhide.exitcode") : null;
-        string? vigemExitPath = vigemPath != null ? Path.Combine(DriversDirectory, "vigem.exitcode") : null;
-
-        var lines = new List<string> { "@echo off" };
-        if (hidHidePath != null)
+        foreach (string name in ObsoleteFiles)
         {
-            lines.Add($"\"{hidHidePath}\" {SilentInstallArgs}");
-            lines.Add($"echo %errorlevel% > \"{hidHideExitPath}\"");
+            string path = Path.Combine(DriversDirectory, name);
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                AppLog.Default.Warning($"DriverInstaller: failed to clean up {path}", ex);
+            }
         }
-        if (vigemPath != null)
-        {
-            lines.Add($"\"{vigemPath}\" {SilentInstallArgs}");
-            lines.Add($"echo %errorlevel% > \"{vigemExitPath}\"");
-        }
+    }
 
-        await File.WriteAllTextAsync(scriptPath, string.Join(Environment.NewLine, lines), ct).ConfigureAwait(false);
-
-        var psi = new ProcessStartInfo(scriptPath)
+    // One UAC prompt covers every missing driver: the app relaunches itself elevated, and that copy
+    // re-verifies and runs the installers from an admin-only directory (see ElevatedDriverInstall).
+    private static async Task<InstallResult> RunElevatedInstallAsync(DriverKinds drivers, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo(Application.ExecutablePath)
         {
             UseShellExecute = true,
             Verb = "runas",
             WindowStyle = ProcessWindowStyle.Hidden,
         };
+        foreach (string arg in DriverInstallProtocol.BuildArguments(new DriverInstallRequest(drivers, DriversDirectory)))
+            psi.ArgumentList.Add(arg);
 
         try
         {
@@ -179,76 +165,44 @@ internal static class DriverInstaller
                 return new InstallResult(InstallOutcome.InstallFailed, "Could not start the installer.");
 
             await proc.WaitForExitAsync(ct).ConfigureAwait(false);
-
-            int? hidHideExit = hidHideExitPath != null ? await ReadExitCodeAsync(hidHideExitPath, ct).ConfigureAwait(false) : null;
-            int? vigemExit = vigemExitPath != null ? await ReadExitCodeAsync(vigemExitPath, ct).ConfigureAwait(false) : null;
-
-            return CombineOutcome(hidHidePath != null, hidHideExit, vigemPath != null, vigemExit);
+            return ToInstallResult(drivers, proc.ExitCode);
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
             AppLog.Default.Warning("DriverInstaller: user declined the elevation prompt.");
             return new InstallResult(InstallOutcome.ElevationDeclined);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
             AppLog.Default.Warning("DriverInstaller: elevated install failed", ex);
             return new InstallResult(InstallOutcome.InstallFailed, ex.Message);
         }
     }
 
-    private static async Task<int?> ReadExitCodeAsync(string path, CancellationToken ct)
+    // A requested driver the helper reports as not requested means it misbehaved, so that's a
+    // failure rather than an assumed success.
+    internal static InstallResult ToInstallResult(DriverKinds requested, int exitCode)
     {
-        try
+        if (!DriverInstallProtocol.TryDecodeExitCode(exitCode, out var hidHide, out var vigem))
         {
-            string text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
-            return int.TryParse(text.Trim(), out int code) ? code : null;
-        }
-        catch (Exception ex)
-        {
-            AppLog.Default.Warning($"DriverInstaller: failed to read installer exit code from {path}", ex);
-            return null;
-        }
-        finally
-        {
-            try
-            {
-                File.Delete(path);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Default.Warning($"DriverInstaller: failed to clean up {path}", ex);
-            }
-        }
-    }
-
-    // ran=false means that installer wasn't part of this run at all (already installed) and
-    // contributes nothing; exitCode=null means it ran but the marker file couldn't be read, which
-    // is treated as a failure rather than silently assumed successful. Internal (not private) so
-    // it's directly unit-testable, the same way ResolveLoaded/ComputeShouldBeActive are elsewhere
-    // in this codebase - pure decision logic kept separate from the process/file I/O around it.
-    internal static InstallResult CombineOutcome(bool hidHideRan, int? hidHideExit, bool vigemRan, int? vigemExit)
-    {
-        var exitCodes = new List<int>();
-
-        if (hidHideRan)
-        {
-            if (hidHideExit is not { } code)
-                return new InstallResult(InstallOutcome.InstallFailed, "Could not determine whether HidHide installed successfully.");
-            exitCodes.Add(code);
+            AppLog.Default.Warning($"DriverInstaller: elevated installer exited with unexpected code {exitCode}.");
+            return new InstallResult(InstallOutcome.InstallFailed, $"Installer exit code: {exitCode}");
         }
 
-        if (vigemRan)
-        {
-            if (vigemExit is not { } code)
-                return new InstallResult(InstallOutcome.InstallFailed, "Could not determine whether ViGEmBus installed successfully.");
-            exitCodes.Add(code);
-        }
+        var steps = new List<(string Name, InstallerStepResult Result)>();
+        if (requested.HasFlag(DriverKinds.HidHide))
+            steps.Add(("HidHide", hidHide));
+        if (requested.HasFlag(DriverKinds.Vigem))
+            steps.Add(("ViGEmBus", vigem));
 
-        if (exitCodes.Exists(c => c != 0 && c != ErrorSuccessRebootRequired))
-            return new InstallResult(InstallOutcome.InstallFailed, $"Installer exit code(s): {string.Join(", ", exitCodes)}");
+        if (steps.Exists(s => s.Result == InstallerStepResult.SignatureInvalid))
+            return new InstallResult(InstallOutcome.SignatureVerificationFailed);
 
-        return exitCodes.Contains(ErrorSuccessRebootRequired)
+        var failed = steps.FindAll(s => s.Result is InstallerStepResult.Failed or InstallerStepResult.NotRequested);
+        if (failed.Count > 0)
+            return new InstallResult(InstallOutcome.InstallFailed, $"{string.Join(" and ", failed.ConvertAll(s => s.Name))} did not install.");
+
+        return steps.Exists(s => s.Result == InstallerStepResult.RebootRequired)
             ? new InstallResult(InstallOutcome.RebootRequired)
             : new InstallResult(InstallOutcome.Success);
     }

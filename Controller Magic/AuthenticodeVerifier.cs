@@ -1,15 +1,15 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.Win32.SafeHandles;
 
 namespace ControllerMagic;
 
 // Verifies a downloaded installer's Authenticode signature before it's ever executed - the one
 // genuinely security-sensitive piece of new code this feature needs, kept isolated in its own
 // file for easy review. Uses WinVerifyTrust, the same mechanism behind Explorer's "Digital
-// Signatures" tab and Get-AuthenticodeSignature, rather than the weaker
-// X509Certificate.CreateFromSignedFile alone, which doesn't validate the trust chain or that the
-// signature actually covers the whole file - that's used here only afterward, to read which
-// certificate a signature WinVerifyTrust already trusted came from.
+// Signatures" tab and Get-AuthenticodeSignature, which validates the trust chain and that the
+// signature covers the whole file. The signer is read from that same verification's state, never
+// by re-opening the file, so the certificate checked is the one WinVerifyTrust trusted.
 internal static class AuthenticodeVerifier
 {
     private static readonly Guid WintrustActionGenericVerifyV2 = new("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
@@ -51,52 +51,57 @@ internal static class AuthenticodeVerifier
     [DllImport("wintrust.dll", ExactSpelling = true, SetLastError = true)]
     private static extern int WinVerifyTrust(IntPtr hwnd, [MarshalAs(UnmanagedType.LPStruct)] Guid pgActionID, IntPtr pWVTData);
 
+    [DllImport("wintrust.dll", ExactSpelling = true)]
+    private static extern IntPtr WTHelperProvDataFromStateData(IntPtr hStateData);
+
+    [DllImport("wintrust.dll", ExactSpelling = true)]
+    private static extern IntPtr WTHelperGetProvSignerFromChain(
+        IntPtr pProvData, uint idxSigner, [MarshalAs(UnmanagedType.Bool)] bool fCounterSigner, uint idxCounterSigner);
+
+    [DllImport("wintrust.dll", ExactSpelling = true)]
+    private static extern IntPtr WTHelperGetProvCertFromChain(IntPtr pSgnr, uint idxCert);
+
     // Only the certificate's Common Name is compared - the same field Windows' own Digital
     // Signatures UI surfaces as "the signer" - not the full subject string, whose other fields
     // (locality, org-unit ids, etc.) aren't meaningful to pin against.
-    public static bool IsSignedBy(string filePath, string expectedSignerCommonName)
+    public static bool IsSignedBy(string filePath, string expectedSignerCommonName) =>
+        IsSignedBy(filePath, fileHandle: null, expectedSignerCommonName);
+
+    // Verifies the bytes behind an already-open handle, so the file can't change underneath.
+    public static bool IsSignedBy(FileStream file, string expectedSignerCommonName)
     {
-        if (!TryVerifyTrust(filePath))
+        ArgumentNullException.ThrowIfNull(file);
+        return IsSignedBy(file.Name, file.SafeFileHandle, expectedSignerCommonName);
+    }
+
+    private static bool IsSignedBy(string filePath, SafeFileHandle? fileHandle, string expectedSignerCommonName)
+    {
+        using var signer = VerifyAndGetSigner(filePath, fileHandle);
+        if (signer == null)
             return false;
 
-        try
-        {
-            // X509CertificateLoader (the modern, non-obsolete API) only reads standalone
-            // certificate containers (DER/PEM/PFX) - it can't pull the signer certificate back out
-            // of a signed PE file, which is the one thing needed here. CreateFromSignedFile is the
-            // API built for exactly that extraction; WinVerifyTrust above is what actually
-            // establishes trust, so this is only ever used afterward to read which certificate a
-            // signature it already trusted came from.
-#pragma warning disable SYSLIB0057
-            using var rawCert = X509Certificate.CreateFromSignedFile(filePath);
-#pragma warning restore SYSLIB0057
-            using var cert = new X509Certificate2(rawCert);
-            string? cn = cert.GetNameInfo(X509NameType.SimpleName, forIssuer: false);
-            return string.Equals(cn, expectedSignerCommonName, StringComparison.Ordinal);
-        }
-        catch (Exception ex)
-        {
-            AppLog.Default.Warning($"AuthenticodeVerifier: failed to read the signer of {filePath}", ex);
-            return false;
-        }
+        string? cn = signer.GetNameInfo(X509NameType.SimpleName, forIssuer: false);
+        return string.Equals(cn, expectedSignerCommonName, StringComparison.Ordinal);
     }
 
     // Revocation is deliberately not checked (WtdRevokeNone): that needs live network on top of
     // the download that already succeeded, and would turn a transient CRL/OCSP outage into an
     // install failure for an otherwise-genuine signature. WtdSaferFlag still requires a full,
     // valid chain to a trusted root.
-    private static bool TryVerifyTrust(string filePath)
+    private static X509Certificate2? VerifyAndGetSigner(string filePath, SafeFileHandle? fileHandle)
     {
-        var fileInfo = new WinTrustFileInfo
-        {
-            cbStruct = (uint)Marshal.SizeOf<WinTrustFileInfo>(),
-            pcwszFilePath = filePath,
-        };
-
+        bool handleAddRefed = false;
         IntPtr fileInfoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WinTrustFileInfo>());
         IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WinTrustData>());
         try
         {
+            fileHandle?.DangerousAddRef(ref handleAddRefed);
+            var fileInfo = new WinTrustFileInfo
+            {
+                cbStruct = (uint)Marshal.SizeOf<WinTrustFileInfo>(),
+                pcwszFilePath = filePath,
+                hFile = handleAddRefed ? fileHandle!.DangerousGetHandle() : IntPtr.Zero,
+            };
             Marshal.StructureToPtr(fileInfo, fileInfoPtr, false);
 
             var data = new WinTrustData
@@ -112,18 +117,38 @@ internal static class AuthenticodeVerifier
             Marshal.StructureToPtr(data, dataPtr, false);
 
             int result = WinVerifyTrust(IntPtr.Zero, WintrustActionGenericVerifyV2, dataPtr);
-
-            // Always tell WinVerifyTrust to release the state it allocated, regardless of outcome.
-            data.dwStateAction = WtdStateActionClose;
-            Marshal.StructureToPtr(data, dataPtr, false);
-            _ = WinVerifyTrust(IntPtr.Zero, WintrustActionGenericVerifyV2, dataPtr);
-
-            return result == 0;
+            try
+            {
+                return result == 0 ? ReadSigner(Marshal.PtrToStructure<WinTrustData>(dataPtr).hWVTStateData) : null;
+            }
+            finally
+            {
+                // The close call needs the state handle WinVerifyTrust wrote back into dataPtr, so
+                // only the action field is patched rather than re-marshalling the managed copy.
+                Marshal.WriteInt32(dataPtr, (int)Marshal.OffsetOf<WinTrustData>(nameof(WinTrustData.dwStateAction)), (int)WtdStateActionClose);
+                _ = WinVerifyTrust(IntPtr.Zero, WintrustActionGenericVerifyV2, dataPtr);
+            }
         }
         finally
         {
+            if (handleAddRefed)
+                fileHandle!.DangerousRelease();
             Marshal.FreeHGlobal(dataPtr);
             Marshal.FreeHGlobal(fileInfoPtr);
         }
+    }
+
+    // The X509Certificate2 duplicates the context, so it outlives the state closed right after.
+    private static X509Certificate2? ReadSigner(IntPtr stateData)
+    {
+        IntPtr provData = WTHelperProvDataFromStateData(stateData);
+        IntPtr signer = provData == IntPtr.Zero ? IntPtr.Zero : WTHelperGetProvSignerFromChain(provData, 0, false, 0);
+        IntPtr providerCert = signer == IntPtr.Zero ? IntPtr.Zero : WTHelperGetProvCertFromChain(signer, 0);
+        if (providerCert == IntPtr.Zero)
+            return null;
+
+        // CRYPT_PROVIDER_CERT is { DWORD cbStruct; PCCERT_CONTEXT pCert; ... }: pCert sits at pointer alignment.
+        IntPtr certContext = Marshal.ReadIntPtr(providerCert, IntPtr.Size);
+        return certContext == IntPtr.Zero ? null : new X509Certificate2(certContext);
     }
 }
