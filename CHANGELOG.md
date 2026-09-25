@@ -23,6 +23,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - Moving the cursor with the stick or touchpad now counts as using the PC, so the screen no
   longer dims or sleeps while you do it. Pointer speed and "Enhance pointer precision" still
   don't affect it.
+- Builds no longer pull in an unused native SDL2 package, and the copyright year is fixed, so a
+  release built from its tag always produces the same file.
 
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen

@@ -3,7 +3,7 @@ own license, reproduced below. This applies to the compiled application, which b
 these components.
 
 ================================================================================
-SDL2 (native library, via the sdl2.nuget and ppy.SDL2-CS packages)
+SDL2 (native library, via the ppy.SDL2-CS package)
 https://www.libsdl.org/
 ================================================================================
 

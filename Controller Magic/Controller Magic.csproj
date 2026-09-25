@@ -21,7 +21,8 @@
     <Version>1.8.0</Version>
     <FileVersion>1.8.0.0</FileVersion>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
-    <Copyright>Copyright © $([System.DateTime]::Now.Year)</Copyright>
+    <!-- A fixed year, not the build clock, so a build from a tag reproduces byte for byte. -->
+    <Copyright>Copyright © 2025-2026</Copyright>
     <NeutralLanguage>en</NeutralLanguage>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
@@ -49,7 +50,6 @@
          managed/native assets this package provides (compile/runtime/native), only this one
          copied-to-output config file. -->
     <PackageReference Include="ppy.SDL2-CS" Version="1.0.741-alpha" ExcludeAssets="contentFiles" />
-    <PackageReference Include="sdl2.nuget" Version="2.32.8" />
     <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
     <PackageReference Include="Nefarius.Drivers.HidHide" Version="3.4.0" />
     <PackageReference Include="Nefarius.Utilities.DeviceManagement" Version="5.2.0" />
