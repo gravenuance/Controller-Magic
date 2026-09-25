@@ -194,7 +194,7 @@ namespace ControllerMagic
                 {
                     new KeyEntry(VK_OEM_MINUS, '-'),
                     new KeyEntry(VK_OEM_MINUS, '_', true), // with Shift
-                    new KeyEntry(VK_OEM_PLUS,  '+'),
+                    new KeyEntry(VK_OEM_PLUS,  '+', true), // Shift+'='
                     new KeyEntry(0,            '\0'),
                 },
                 {
@@ -205,13 +205,13 @@ namespace ControllerMagic
                 },
                 {
                     new KeyEntry(VK_OEM_7, '\''),
-                    new KeyEntry(VK_OEM_7, '\"'),
+                    new KeyEntry(VK_OEM_7, '"', true),
                     new KeyEntry(0,   '\0'),
                     new KeyEntry(0,   '\0'),
                 },
                 {
                     new KeyEntry(VK_OEM_1, ';'),
-                    new KeyEntry(VK_OEM_1, ':'),
+                    new KeyEntry(VK_OEM_1, ':', true),
                     new KeyEntry(0,   '\0'),
                     new KeyEntry(0,   '\0'),
                 },
