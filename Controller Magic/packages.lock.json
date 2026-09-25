@@ -33,9 +33,9 @@
       },
       "NJsonSchema.Annotations": {
         "type": "Direct",
-        "requested": "[11.3.2, )",
-        "resolved": "11.3.2",
-        "contentHash": "rSwQFKdLlq/lbAJfYqI5KBE46KJCbc99L6G9XM1nVpCOxE0eoaNE8+fkJ7Ws+I5VqP7oEPGKXTR3Q7PmYoeTDA=="
+        "requested": "[11.6.1, )",
+        "resolved": "11.6.1",
+        "contentHash": "WA4z8iK+0SOh2/qoo7rtEanj/LjJZ8oWWoXI8u1xcYMk6VzHONqpabJBYGrzqDO41ld+VQHOFL+B8MXncIVSSA=="
       },
       "ppy.SDL2-CS": {
         "type": "Direct",
