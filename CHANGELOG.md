@@ -116,6 +116,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - In the "Full-screen apps" lists, the add box lost focus after each entry, so every new entry
   needed another click. Entries can now also be removed from the keyboard: Tab to one and press
   Delete, Backspace, Enter or Space. Screen readers announce each as "Remove <name>".
+- Settings' close button couldn't be reached from the keyboard, and Esc did nothing. Tab now
+  reaches it, Enter or Space presses it, Esc closes Settings, and screen readers call it "Close".
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the

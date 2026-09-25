@@ -106,7 +106,7 @@ namespace ControllerMagic
         {
             EnableDragging(this);
 
-            BuildTitleBar();
+            var titleBar = BuildTitleBar();
             BuildStatusRow();
 
             _layoutY += 12;
@@ -187,13 +187,16 @@ namespace ControllerMagic
                 items => AppSettings.Instance.StreamingServiceNames = items);
             EndCard();
 
+            // Last in tab order, so first focus lands on a setting rather than on Close.
+            titleBar.TabIndex = Controls.Count;
+
             ClientSize = new Size(ClientSize.Width, _layoutY + OuterMargin);
             RefreshStatus();
         }
 
         // ============ chrome ============
 
-        private void BuildTitleBar()
+        private Panel BuildTitleBar()
         {
             const int barHeight = 40;
             var bar = new Panel
@@ -226,22 +229,20 @@ namespace ControllerMagic
                 Font = Theme.UiFontBold,
                 ForeColor = Theme.Ink,
             };
-            var close = new Label
+            var close = new GlyphButton
             {
                 Text = "✕",
-                AutoSize = false,
                 Size = new Size(28, 28),
                 Location = new Point(ClientSize.Width - 38, 6),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                TextAlign = ContentAlignment.MiddleCenter,
                 ForeColor = Theme.Muted,
+                HoverColor = Theme.Ink,
+                FocusColor = Theme.Accent,
                 Font = Theme.GlyphFont,
-                Cursor = Cursors.Hand,
-                TabIndex = _nextTabIndex++,
+                AccessibleName = "Close",
             };
             close.Click += (_, __) => Close();
-            close.MouseEnter += (_, __) => close.ForeColor = Theme.Ink;
-            close.MouseLeave += (_, __) => close.ForeColor = Theme.Muted;
+            CancelButton = close;
 
             // These must be children of bar, not siblings added straight to the form: WinForms
             // z-orders earlier-added siblings on top, so bar (added first, opaque) would paint
@@ -254,6 +255,7 @@ namespace ControllerMagic
             EnableDragging(bar);
 
             _layoutY = barHeight;
+            return bar;
         }
 
         private void BuildStatusRow()
