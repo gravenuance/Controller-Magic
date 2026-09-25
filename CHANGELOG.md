@@ -27,6 +27,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   release built from its tag always produces the same file.
 - The on-screen keyboard is only redrawn when the highlighted letter or layer changes, instead of
   60 times a second, so it uses less CPU while open.
+- Releases now include the standalone exe, SHA-256 checksums (`SHA256SUMS.txt`) and signed
+  build provenance, so a download can be checked against the tagged build.
 
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen

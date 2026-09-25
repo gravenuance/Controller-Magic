@@ -14,6 +14,8 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write # create the GitHub Release and upload its assets
+      id-token: write # mint the OIDC token Sigstore signs the provenance with
+      attestations: write # store the provenance attestation
     # Scripts read the tag from the environment, never as expression text spliced into their source.
     env:
       REF_NAME: ${{ github.ref_name }}
@@ -36,13 +38,33 @@ jobs:
       - name: Publish self-contained single-file win-x64
         run: dotnet publish "Controller Magic/Controller Magic.csproj" -p:PublishProfile=win-x64
 
-      - name: Package artifact
+      - name: Package artifacts
         shell: pwsh
         run: |
           $publishDir = "Controller Magic/bin/Release/net10.0-windows/publish/win-x64"
           $zipPath = "ControllerMagic-$env:REF_NAME-win-x64.zip"
+          $exePath = "ControllerMagic-$env:REF_NAME-win-x64.exe"
           Compress-Archive -Path "$publishDir/*" -DestinationPath $zipPath
+          # Space-free name: GitHub rewrites spaces in asset names, which would break SHA256SUMS.txt.
+          Copy-Item -LiteralPath "$publishDir/Controller Magic.exe" -Destination $exePath
           echo "ZIP_PATH=$zipPath" >> $env:GITHUB_ENV
+          echo "EXE_PATH=$exePath" >> $env:GITHUB_ENV
+
+      # Standard sha256sum format (hex, two spaces, name, LF) so `sha256sum -c` verifies the downloads.
+      - name: Write SHA-256 checksums
+        shell: pwsh
+        run: |
+          $lines = foreach ($file in $env:ZIP_PATH, $env:EXE_PATH) {
+              "{0}  {1}`n" -f (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant(), $file
+          }
+          Set-Content -Path SHA256SUMS.txt -Value (-join $lines) -NoNewline -Encoding utf8NoBOM
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.EXE_PATH }}
 
       # Pulls this tag's own section out of CHANGELOG.md (falling back to a plain note if the tag
       # has no matching "## [x.y.z]" entry) so the release notes are always the actual changelog,
@@ -67,6 +89,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          files: ${{ env.ZIP_PATH }}
+          files: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.EXE_PATH }}
+            SHA256SUMS.txt
           body_path: release-notes.md
           fail_on_unmatched_files: true

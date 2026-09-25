@@ -63,6 +63,16 @@ dotnet publish "Controller Magic/Controller Magic.csproj" -p:PublishProfile=win-
 The result lands in `Controller Magic/bin/Release/net10.0-windows/publish/win-x64/` and needs no
 .NET runtime installed on the machine it runs on.
 
+## Verifying a download
+
+Each GitHub Release ships the zip, the standalone exe and `SHA256SUMS.txt`, and both binaries carry
+signed build provenance tying them to the tagged workflow run:
+
+```
+sha256sum -c --ignore-missing SHA256SUMS.txt
+gh attestation verify ControllerMagic-<tag>-win-x64.exe -R gravenuance/Controller-Magic
+```
+
 ## Running
 
 Run the built (or published) executable directly — it has no window, just a tray icon. A second
