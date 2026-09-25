@@ -46,12 +46,10 @@ internal sealed class Sdl2PadReader : IDisposable
     private const byte EnablePlayerLights = 0x10;
     private const int PlayerLightsOffset = 43;
     private const byte PlayerLightsInstant = 0x20;
-    private static readonly TimeSpan PlayerLightsRefresh = TimeSpan.FromSeconds(3);
 
     private readonly TimeProvider _clock;
     private bool _isDualSense;
-    private byte? _appliedPlayerLights;
-    private long _playerLightsSentAt;
+    private readonly PlayerLightsSchedule _playerLights;
     private bool _playerLightsFailureLogged;
 
     [DllImport("SDL2.dll", CallingConvention = CallingConvention.Cdecl)]
@@ -70,6 +68,7 @@ internal sealed class Sdl2PadReader : IDisposable
     {
         _clock = clock;
         _watchdog = new ReportWatchdog(clock, ReportsStaleAfter);
+        _playerLights = new PlayerLightsSchedule(clock);
 
         SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
@@ -204,18 +203,15 @@ internal sealed class Sdl2PadReader : IDisposable
             _ => BatteryLevel.Unknown,
         };
 
-    // SDL resets and rewrites the player LEDs once a Bluetooth connection settles, wiping an early
-    // pattern, so this re-sends on a slow cadence as well as on change.
+    // Cheap to call every tick: PlayerLightsSchedule decides when a write actually goes out.
     public unsafe void SetPlayerLights(byte mask)
     {
         if (!_isDualSense)
             return;
-        if (_appliedPlayerLights == mask && _clock.GetElapsedTime(_playerLightsSentAt) < PlayerLightsRefresh)
-            return;
 
-        bool changed = _appliedPlayerLights != mask;
-        _appliedPlayerLights = mask;
-        _playerLightsSentAt = _clock.GetTimestamp();
+        var send = _playerLights.Decide(mask);
+        if (send == PlayerLightsSend.None)
+            return;
 
         byte* effect = stackalloc byte[DualSenseEffectSize];
         new Span<byte>(effect, DualSenseEffectSize).Clear();
@@ -223,7 +219,7 @@ internal sealed class Sdl2PadReader : IDisposable
         effect[PlayerLightsOffset] = (byte)(mask | PlayerLightsInstant);
 
         int result = SDL.SDL_GameControllerSendEffect(_controller, (IntPtr)effect, DualSenseEffectSize);
-        if (changed)
+        if (send == PlayerLightsSend.Changed)
             AppLog.Default.Info($"Sdl2PadReader: player LEDs 0x{mask:X2} for battery {Battery} (SendEffect -> {result})");
 
         if (result != 0 && !_playerLightsFailureLogged)
@@ -258,6 +254,7 @@ internal sealed class Sdl2PadReader : IDisposable
             CurrentDeviceIdentity = TryGetDeviceIdentity(handle, joystick);
             var type = SDL.SDL_GameControllerGetType(handle);
             _isDualSense = type == SDL.SDL_GameControllerType.SDL_CONTROLLER_TYPE_PS5;
+            _playerLights.Restart();
             _hasReportStamp = ReportStampIsFree(type) && TryEnableReportStamp(handle);
             AppLog.Default.Info($"Sdl2PadReader: opened {type} ({SDL.SDL_GameControllerName(handle)}), range guard {DescribeRangeGuard(type, _hasReportStamp)}");
             ConnectionSerial++;
@@ -321,7 +318,6 @@ internal sealed class Sdl2PadReader : IDisposable
         CurrentDeviceIdentity = null;
         _appliedLightbar = null;
         _isDualSense = false;
-        _appliedPlayerLights = null;
         _playerLightsFailureLogged = false;
         if (_dropoutCount > 0)
             AppLog.Default.Info($"Sdl2PadReader: {_dropoutCount} report dropout(s) during this connection");

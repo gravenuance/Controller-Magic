@@ -36,6 +36,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   covers PlayStation controllers only.
 - The lightbar's orange and green are dimmed to the brightness of SDL's own player colours, so a
   PlayStation controller's battery lasts longer. The colours themselves are unchanged.
+- To save its battery, a DualSense's battery lights are only re-sent during the first 15 seconds
+  after it connects and when the level changes, instead of every 3 seconds for good.
 
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen
