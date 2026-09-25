@@ -101,6 +101,9 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   made the cursor misbehave. Such values are now reset or brought into the range the Settings
   sliders allow, and the log says which ones.
 
+- A setting that changed after the Settings window closed, such as "Use HidHide" once its
+  driver setup finished, relied on the closed window to be saved.
+
 ### Security
 - Driver installers could be swapped by another program between the signature check and the
   admin prompt. The admin prompt now names Controller Magic itself, which copies the installers

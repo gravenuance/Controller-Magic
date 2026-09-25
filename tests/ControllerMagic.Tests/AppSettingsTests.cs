@@ -14,14 +14,25 @@ public sealed class AppSettingsTests : IDisposable
 
     public AppSettingsTests() => Directory.CreateDirectory(_dir);
 
-    public void Dispose() => Directory.Delete(_dir, recursive: true);
+    private readonly List<SettingsStore> _stores = [];
+
+    public void Dispose()
+    {
+        foreach (var store in _stores)
+            store.Dispose();
+        Directory.Delete(_dir, recursive: true);
+    }
 
     private string SettingsPath => Path.Combine(_dir, "settings.json");
     private string LegacyPath => Path.Combine(_dir, "legacy", "settings.json");
     private string BadBackupPath => SettingsPath + ".bad-20260304050607";
 
-    private SettingsStore CreateStore() =>
-        new(SettingsPath, LegacyPath, _clock, new AppLog(Path.Combine(_dir, "app.log"), _clock));
+    private SettingsStore CreateStore()
+    {
+        var store = new SettingsStore(SettingsPath, LegacyPath, _clock, new AppLog(Path.Combine(_dir, "app.log"), _clock));
+        _stores.Add(store);
+        return store;
+    }
 
     private void WriteSettings(string json) => File.WriteAllText(SettingsPath, json);
 
@@ -241,5 +252,58 @@ public sealed class AppSettingsTests : IDisposable
     public void Defaults_AreAllWithinTheirRanges()
     {
         Assert.Empty(AppSettings.CreateDefault().Validate());
+    }
+
+    [Fact]
+    public void RequestSave_WritesOnlyAfterAQuietGap()
+    {
+        var settings = CreateStore().Load();
+
+        settings.StickDeadZone = 1111;
+        settings.RequestSave();
+        _clock.Advance(TimeSpan.FromMilliseconds(300));
+        settings.StickDeadZone = 2222;
+        settings.RequestSave();
+        _clock.Advance(TimeSpan.FromMilliseconds(300));
+        bool writtenEarly = File.Exists(SettingsPath);
+        _clock.Advance(TimeSpan.FromMilliseconds(100));
+
+        Assert.False(writtenEarly);
+        Assert.Equal(2222, ReadJson(SettingsPath).GetProperty("StickDeadZone").GetInt32());
+    }
+
+    [Fact]
+    public void FlushPendingSave_WritesARequestedSaveImmediately()
+    {
+        var settings = CreateStore().Load();
+        settings.StickDeadZone = 3333;
+        settings.RequestSave();
+
+        settings.FlushPendingSave();
+
+        Assert.Equal(3333, ReadJson(SettingsPath).GetProperty("StickDeadZone").GetInt32());
+    }
+
+    [Fact]
+    public void FlushPendingSave_WithNothingRequested_WritesNothing()
+    {
+        var settings = CreateStore().Load();
+
+        settings.FlushPendingSave();
+
+        Assert.False(File.Exists(SettingsPath));
+    }
+
+    [Fact]
+    public void Dispose_FlushesAPendingSave()
+    {
+        var store = CreateStore();
+        var settings = store.Load();
+        settings.StickDeadZone = 4444;
+        settings.RequestSave();
+
+        store.Dispose();
+
+        Assert.Equal(4444, ReadJson(SettingsPath).GetProperty("StickDeadZone").GetInt32());
     }
 }

@@ -54,8 +54,6 @@ namespace ControllerMagic
 
         private readonly ControllerPoller _poller;
         private readonly System.Windows.Forms.Timer _statusTimer;
-        private readonly System.Windows.Forms.Timer _saveDebounceTimer;
-        private bool _saveDirty;
 
         private int _layoutY;
         private int _nextTabIndex;
@@ -71,9 +69,6 @@ namespace ControllerMagic
 
             InitializeComponent();
             Icon = Theme.AppIcon;
-
-            _saveDebounceTimer = new System.Windows.Forms.Timer { Interval = 400 };
-            _saveDebounceTimer.Tick += (_, __) => FlushPendingSave();
 
             _statusTimer = new System.Windows.Forms.Timer { Interval = 500 };
             _statusTimer.Tick += (_, __) => RefreshStatus();
@@ -455,8 +450,7 @@ namespace ControllerMagic
 
             toggle.CheckedChanged += async (_, __) =>
             {
-                // Deliberately not ConfigureAwait(false): RequestSave() below touches
-                // _saveDebounceTimer, a WinForms Timer that needs to stay on the UI thread.
+                // Stays on the UI thread: toggle is read again after the await.
                 await StartupHelper.SetEnabledAsync(toggle.Checked).ConfigureAwait(true);
                 AppSettings.Instance.RunAtStartup = toggle.Checked;
                 RequestSave();
@@ -668,27 +662,12 @@ namespace ControllerMagic
 
         // ============ saving ============
 
-        // Slider drags fire Scroll continuously, so saving on every tick means a synchronous file
-        // write per pixel of movement. Batch changes and write once after a short idle gap instead.
-        private void RequestSave()
-        {
-            _saveDirty = true;
-            _saveDebounceTimer.Stop();
-            _saveDebounceTimer.Start();
-        }
-
-        private void FlushPendingSave()
-        {
-            _saveDebounceTimer.Stop();
-            if (!_saveDirty) return;
-            _saveDirty = false;
-            AppSettings.Instance.Save();
-        }
+        private static void RequestSave() => AppSettings.Instance.RequestSave();
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             _statusTimer.Stop();
-            FlushPendingSave();
+            AppSettings.Instance.FlushPendingSave();
             base.OnFormClosed(e);
         }
 

@@ -22,8 +22,11 @@ internal sealed record ParsedSettings(
 
 // Reads, migrates and writes settings.json. Nothing the user saved is ever discarded without a
 // copy on disk first, and a file from a newer build is never written over.
-internal sealed class SettingsStore
+internal sealed class SettingsStore : IDisposable
 {
+    // Slider drags change a value many times a second; RequestSave writes once after this quiet gap.
+    internal static readonly TimeSpan SaveDelay = TimeSpan.FromMilliseconds(400);
+
     private static readonly JsonDocumentOptions ReadOptions = new()
     {
         AllowTrailingCommas = true,
@@ -51,6 +54,11 @@ internal sealed class SettingsStore
     // race on the same temp file.
     private readonly Lock _saveLock = new();
     private bool _readOnlyLogged;
+
+    private readonly Lock _pendingLock = new();
+    private AppSettings? _pendingSave;
+    private ITimer? _saveTimer;
+    private bool _disposed;
 
     internal SettingsStore(string path, string? legacyPath, TimeProvider clock, AppLog log)
     {
@@ -275,6 +283,53 @@ internal sealed class SettingsStore
                 return false;
             }
         }
+    }
+
+    // Lives here rather than in a form, so a save requested after the form has closed still lands.
+    internal void RequestSave(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        lock (_pendingLock)
+        {
+            if (_disposed)
+            {
+                _pendingSave = null;
+                Save(settings);
+                return;
+            }
+
+            _pendingSave = settings;
+            _saveTimer ??= _clock.CreateTimer(_ => FlushPendingSave(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            _saveTimer.Change(SaveDelay, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    internal void FlushPendingSave()
+    {
+        AppSettings? pending;
+        lock (_pendingLock)
+        {
+            pending = _pendingSave;
+            _pendingSave = null;
+            _saveTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        }
+
+        if (pending != null)
+            Save(pending);
+    }
+
+    public void Dispose()
+    {
+        lock (_pendingLock)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+        }
+
+        FlushPendingSave();
+        _saveTimer?.Dispose();
     }
 
     private void TryDeleteLegacyFile(string legacyPath)

@@ -145,12 +145,14 @@ namespace ControllerMagic
             return items.FindAll(item => !string.IsNullOrWhiteSpace(item));
         }
 
-        public void Save()
-        {
-            if (Store == null)
-                throw new InvalidOperationException("Only settings loaded through a SettingsStore can be saved.");
+        public void Save() => RequireStore().Save(this);
 
-            Store.Save(this);
-        }
+        // Batches rapid changes (a slider drag) into one write shortly after they stop.
+        public void RequestSave() => RequireStore().RequestSave(this);
+
+        public void FlushPendingSave() => RequireStore().FlushPendingSave();
+
+        private SettingsStore RequireStore() =>
+            Store ?? throw new InvalidOperationException("Only settings loaded through a SettingsStore can be saved.");
     }
 }
