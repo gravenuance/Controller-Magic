@@ -76,6 +76,9 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   seconds and still unhides the controller.
 - Changing settings in the first moments after the very first launch could clash with the app
   turning on "Start with Windows" in the background. A failure there is now logged.
+- An error the app recovers from was reported as a crash, and one that kept repeating (in the
+  on-screen keyboard, for example) could stack up error boxes. It now shows one short notice per
+  run and keeps going; a real crash is still reported once.
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the

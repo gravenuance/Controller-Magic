@@ -31,9 +31,10 @@ namespace ControllerMagic
             if (!createdNew)
                 return 0;
 
+            var reporter = new UnhandledExceptionReporter(AppLog.Default, TimeProvider.System, ShowExceptionNotice);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-            Application.ThreadException += (_, e) => HandleFatalException(e.Exception);
-            AppDomain.CurrentDomain.UnhandledException += (_, e) => HandleFatalException(e.ExceptionObject as Exception);
+            Application.ThreadException += (_, e) => reporter.ReportSurvivable(e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (_, e) => reporter.ReportFatal(e.ExceptionObject as Exception);
 
             // Not currently reachable (nothing here fires-and-forgets a Task without awaiting or
             // observing it), but StartupHelper's process-spawning calls are moving to async - this
@@ -64,25 +65,29 @@ namespace ControllerMagic
             return 0;
         }
 
-        // Background threads (e.g. the controller poll loop) crash the whole process on an
-        // unhandled exception with no way to recover; this at least logs and tells the user
-        // instead of leaving them with a raw .NET fault dialog or a silent disappearance from
-        // the tray.
-        private static void HandleFatalException(Exception? ex)
+        // Background threads (e.g. the controller poll loop) crash the whole process with no way
+        // to recover; UI-thread exceptions are caught by WinForms and the app keeps running.
+        private static void ShowExceptionNotice(ExceptionNotice notice)
         {
+            var (text, icon) = notice switch
+            {
+                ExceptionNotice.Survived => (
+                    "Something went wrong; Controller Magic kept running. Details are in the log.",
+                    MessageBoxIcon.Warning),
+                ExceptionNotice.Crashed => (
+                    $"Controller Magic crashed. Details saved to:\n{AppLog.Default.FilePath}",
+                    MessageBoxIcon.Error),
+                _ => throw new ArgumentOutOfRangeException(nameof(notice), notice, null),
+            };
+
             try
             {
-                AppLog.Default.Error("Unhandled exception", ex);
-
-                MessageBox.Show(
-                    $"Controller Magic crashed. Details saved to:\n{AppLog.Default.FilePath}",
-                    "Controller Magic",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                MessageBox.Show(text, "Controller Magic", MessageBoxButtons.OK, icon);
             }
-            catch
+            catch (Exception ex)
             {
-                // Logging or showing the dialog itself failed; nothing more we can safely do.
+                // Already logged by the reporter; a failing dialog has nowhere left to go.
+                AppLog.Default.Warning("Could not show the exception notice", ex);
             }
         }
     }
