@@ -64,4 +64,38 @@ public class DaisywheelLayoutTests
         Assert.Equal(expected.Vk, entry.Vk);
         Assert.Equal(expected.Shift, entry.HasMod);
     }
+
+    [Fact]
+    public void SlotCarriedIntoASectorWithFewerEntries_StillNamesAKey()
+    {
+        var layout = ControllerPoller.KeyboardLayout;
+        for (int layer = 0; layer < layout.GetLength(0); layer++)
+        {
+            for (int sector = 0; sector < layout.GetLength(1); sector++)
+            {
+                for (int carried = 0; carried < layout.GetLength(2); carried++)
+                {
+                    int slot = ControllerPoller.ClampSlot(layer, sector, carried);
+
+                    Assert.NotEqual(0, layout[layer, sector, slot].Vk);
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void SlotWithinTheSector_IsKept()
+    {
+        // Layer 0, sector 0 has four entries.
+        Assert.Equal(3, ControllerPoller.ClampSlot(layer: 0, sector: 0, slot: 3));
+        Assert.Equal(1, ControllerPoller.ClampSlot(layer: 0, sector: 2, slot: 1));
+    }
+
+    [Fact]
+    public void SlotPastTheSectorsLastEntry_MovesToItsLastEntry()
+    {
+        // Layer 0, sector 2 has three entries; layer 1, sector 2 has one.
+        Assert.Equal(2, ControllerPoller.ClampSlot(layer: 0, sector: 2, slot: 3));
+        Assert.Equal(0, ControllerPoller.ClampSlot(layer: 1, sector: 2, slot: 3));
+    }
 }

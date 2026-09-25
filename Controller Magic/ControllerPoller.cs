@@ -1040,8 +1040,18 @@ namespace ControllerMagic
         private int GetSector(short lx, short ly)
         {
             int sector = ComputeSector(lx, ly, KeyboardDeadZone);
+            // Clamped before the sector is published so the overlay never highlights an empty slot.
+            if (sector >= 0)
+                _slotIndex = ClampSlot(_keyboardLayer, sector, _slotIndex);
             _currentSector = sector;
             return sector;
+        }
+
+        // A ring picked in a fuller sector (or on the touchpad) carries over to the sector the stick moves to.
+        internal static int ClampSlot(int layer, int sector, int slot)
+        {
+            int count = GetEntryCount(layer, sector);
+            return count == 0 ? 0 : Math.Min(slot, count - 1);
         }
 
         // Inner part of the touchpad, as a fraction of its half-size, that selects nothing.
