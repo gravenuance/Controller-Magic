@@ -31,6 +31,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - After the controller dropped out and came back, a button held when it dropped could fire once
   more (a stray click from A, for example), and a stick held through the reconnect moved the
   cursor at full speed straight away. Buttons still held on reconnect now wait to be let go.
+- Pushing the left stick fully into the lower-left corner froze the cursor on some controllers,
+  and in the on-screen keyboard selected nothing.
 
 ## [1.8.0] - 2026-09-24
 

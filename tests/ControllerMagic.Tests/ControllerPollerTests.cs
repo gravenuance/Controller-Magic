@@ -76,6 +76,23 @@ public class ControllerPollerTests
         Assert.Equal(expectedSector, ControllerPoller.ComputeSector(lx, ly, deadZone: 6000));
     }
 
+    [Theory]
+    [InlineData(short.MinValue, short.MinValue, 3)] // full down-left
+    [InlineData(short.MinValue, short.MaxValue, 1)] // full up-left
+    [InlineData(short.MaxValue, short.MinValue, 5)] // full down-right
+    public void ComputeSector_FullyDeflectedCorner_ReturnsTheDiagonalSector(short lx, short ly, int expectedSector)
+    {
+        Assert.Equal(expectedSector, ControllerPoller.ComputeSector(lx, ly, deadZone: 6000));
+    }
+
+    [Fact]
+    public void StickMagnitude_FullyDeflectedCorner_IsFiniteAndPastFullScale()
+    {
+        double magnitude = ControllerPoller.StickMagnitude(short.MinValue, short.MinValue);
+
+        Assert.Equal(32768 * Math.Sqrt(2), magnitude, precision: 6);
+    }
+
     [Fact]
     public void ComputeSector_AlwaysReturnsAValidSectorOrNegativeOne()
     {

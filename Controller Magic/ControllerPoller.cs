@@ -689,7 +689,7 @@ namespace ControllerMagic
         {
             var lx = pad.LeftThumbX;
             var ly = pad.LeftThumbY;
-            var mag = Math.Sqrt(lx * lx + ly * ly);
+            var mag = StickMagnitude(lx, ly);
             if (mag < StickDeadZone)
             {
                 _dxRemainder = 0;
@@ -729,6 +729,9 @@ namespace ControllerMagic
 
             HandleScroll(pad.RightThumbY, pad.RightThumbX);
         }
+
+        // In double: a fully deflected corner (-32768, -32768) overflows int to a negative sum.
+        internal static double StickMagnitude(short x, short y) => Math.Sqrt(((double)x * x) + ((double)y * y));
 
         private readonly TouchpadMouse _touchpadMouse = new(TimeProvider.System);
         private bool _touchpadHoldsLeft;
@@ -1095,11 +1098,12 @@ namespace ControllerMagic
         // pure-core-plus-stateful-wrapper split as ComputeHoldRamp below.
         internal static int ComputeSector(short lx, short ly, int deadZone)
         {
-            int x = lx;
-            int y = ly;
+            long x = lx;
+            long y = ly;
 
-            int magSq = x * x + y * y;
-            if (magSq < deadZone * deadZone)
+            // In long: a fully deflected corner overflows int (see StickMagnitude).
+            long magSq = (x * x) + (y * y);
+            if (magSq < (long)deadZone * deadZone)
                 return -1;
 
             double angleRad = Math.Atan2(y, x);
