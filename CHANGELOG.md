@@ -31,6 +31,9 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   build provenance, so a download can be checked against the tagged build.
 - Closing Settings now hides it instead of discarding it, so reopening is instant and it
   returns where you left it. Values changed elsewhere meanwhile are shown when it reopens.
+- A Switch Pro Controller or Joy-Con over Bluetooth no longer has its motion sensor switched on
+  and its reports forced to 60 a second, which drained its battery. The Bluetooth range guard now
+  covers PlayStation controllers only.
 
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen

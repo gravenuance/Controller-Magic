@@ -258,11 +258,25 @@ internal sealed class Sdl2PadReader : IDisposable
             CurrentDeviceIdentity = TryGetDeviceIdentity(handle, joystick);
             var type = SDL.SDL_GameControllerGetType(handle);
             _isDualSense = type == SDL.SDL_GameControllerType.SDL_CONTROLLER_TYPE_PS5;
-            _hasReportStamp = TryEnableReportStamp(handle);
-            AppLog.Default.Info($"Sdl2PadReader: opened {type} ({SDL.SDL_GameControllerName(handle)}), range guard {(_hasReportStamp ? "on" : "unavailable")}");
+            _hasReportStamp = ReportStampIsFree(type) && TryEnableReportStamp(handle);
+            AppLog.Default.Info($"Sdl2PadReader: opened {type} ({SDL.SDL_GameControllerName(handle)}), range guard {DescribeRangeGuard(type, _hasReportStamp)}");
             ConnectionSerial++;
             return;
         }
+    }
+
+    // PlayStation pads send IMU data in every report anyway; on a Switch pad SDL powers the IMU and
+    // switches it to continuous 60 Hz reports, draining its battery just for this stamp.
+    internal static bool ReportStampIsFree(SDL.SDL_GameControllerType type) =>
+        type is SDL.SDL_GameControllerType.SDL_CONTROLLER_TYPE_PS4 or SDL.SDL_GameControllerType.SDL_CONTROLLER_TYPE_PS5;
+
+    private static string DescribeRangeGuard(SDL.SDL_GameControllerType type, bool hasReportStamp)
+    {
+        if (hasReportStamp)
+            return "on";
+        return ReportStampIsFree(type)
+            ? "unavailable (no accelerometer stamp)"
+            : "unavailable (its report stamp is only free on PlayStation pads)";
     }
 
     private static bool TryEnableReportStamp(IntPtr controller) =>

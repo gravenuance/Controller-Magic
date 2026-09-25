@@ -28,9 +28,9 @@ remote outside of fullscreen games — a background tray app, not a window you k
 - **Controller lights** — on a DualSense or DualShock 4, the lightbar shows orange for mouse
   control, green while the on-screen keyboard is open, and dim blue while standing down for a
   fullscreen game. On a DualSense the five LEDs under the touchpad show the battery level.
-- **Bluetooth range guard** — if a PlayStation or Switch Pro controller goes quiet (usually from
-  being too far away), it is treated as let go rather than stuck on its last input, so the cursor
-  doesn't drift off and no button stays held.
+- **Bluetooth range guard** — if a PlayStation controller goes quiet (usually from being too far
+  away), it is treated as let go rather than stuck on its last input, so the cursor doesn't drift
+  off and no button stays held.
 - **Starts with Windows** — on by default, toggleable from Settings.
 - **Use HidHide** (optional, off by default) — stops the Guide/Home/Steam button from opening
   Xbox Game Bar or Steam's Big Picture mode, so it's free to be used for something else, and
