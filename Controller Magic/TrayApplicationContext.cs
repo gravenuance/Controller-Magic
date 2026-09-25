@@ -20,6 +20,7 @@ namespace ControllerMagic
         private readonly Bitmap _restartIcon;
         private readonly Bitmap _exitIcon;
         private readonly ResourceUsageMonitor _resourceMonitor;
+        private readonly SingleWindow<SettingsForm> _settings;
 
         public TrayApplicationContext()
         {
@@ -57,6 +58,7 @@ namespace ControllerMagic
             _ = _overlay.Handle;
 
             _resourceMonitor = new ResourceUsageMonitor(TimeSpan.FromMinutes(10));
+            _settings = new SingleWindow<SettingsForm>(CreateSettingsForm);
 
             // Last: its events land on _overlay, so a press before this point would find it null.
             _controllerPoller.Start();
@@ -173,18 +175,17 @@ namespace ControllerMagic
             );
         }
 
-        private void OnSettingsClick(object? sender, EventArgs e)
+        private void OnSettingsClick(object? sender, EventArgs e) => _settings.ShowOrActivate();
+
+        // Diagnostic pair for the same handle-exhaustion investigation as
+        // GamepadPassthroughController.ApplyTransition: repeated open/close cycles show whether
+        // the settings window itself leaks.
+        private SettingsForm CreateSettingsForm()
         {
-            // Diagnostic pair for the same handle-exhaustion investigation as
-            // GamepadPassthroughController.ApplyTransition - if this dialog itself is the source,
-            // repeated open/close cycles should show it. Note: if a handler thrown inside
-            // ShowDialog() is caught by WinForms' own message loop (Application.ThreadException)
-            // rather than propagating out, ShowDialog() never returns and the "after" snapshot
-            // for that specific occurrence won't appear - that gap is itself a useful signal.
             ResourceUsageMonitor.LogSnapshot("before-settings-open");
-            using var form = new SettingsForm(_controllerPoller);
-            form.ShowDialog();
-            ResourceUsageMonitor.LogSnapshot("after-settings-close");
+            var form = new SettingsForm(_controllerPoller);
+            form.FormClosed += (_, _) => ResourceUsageMonitor.LogSnapshot("after-settings-close");
+            return form;
         }
 
         // Program relaunches once shutdown has finished and the single-instance lock is free.
@@ -212,6 +213,8 @@ namespace ControllerMagic
         protected override void ExitThreadCore()
         {
             SystemEvents.SessionEnded -= OnSessionEnded;
+            // First: closing flushes its pending save and stops its timer reading the poller.
+            _settings.Close();
             _controllerPoller.KeyboardModeChanged -= OnKeyboardModeChanged;
             _controllerPoller.PassthroughNoticeRaised -= OnPassthroughNotice;
             _controllerPoller.Stop();
@@ -237,6 +240,7 @@ namespace ControllerMagic
             if (disposing)
             {
                 SystemEvents.SessionEnded -= OnSessionEnded;
+                _settings.Dispose();
                 _trayIcon.Dispose();
                 _overlay?.Dispose();
                 _settingsIcon.Dispose();

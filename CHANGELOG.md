@@ -83,6 +83,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   app next started. The app now unhides it and removes the virtual pad before Windows closes it.
 - Restart from the tray menu usually just closed the app: the new copy started while the old one
   was still closing and took it for a second instance. It now starts once the old one is done.
+- Double-clicking the tray icon while Settings was open opened a second Settings window, and the
+  two could overwrite each other's changes. The open window is now brought to the front instead.
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the
