@@ -29,6 +29,26 @@ public class ControllerPollerStopTests
     }
 
     [Fact]
+    public void Stop_CalledAgainAfterGivingUp_DoesNotWaitAgain()
+    {
+        var harness = new PassthroughHarness();
+        using var poller = new ControllerPoller(harness.Controller, new InputEmulator(new FakeDesktopInput()));
+        using var release = new ManualResetEventSlim();
+        poller.StartThread(() => release.Wait(TestContext.Current.CancellationToken));
+
+        try
+        {
+            poller.Stop(TimeSpan.FromMilliseconds(20));
+
+            Assert.True(poller.Stop(TimeSpan.FromMilliseconds(20)));
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [Fact]
     public void Stop_PollThreadEnds_ReportsAJoin()
     {
         var harness = new PassthroughHarness();

@@ -324,11 +324,13 @@ namespace ControllerMagic
         public void Stop() => Stop(StopWait);
 
         // Bounded so Exit can't hang on a loop stuck in a native call; the uncloak its finally
-        // would have run happens here instead (Shutdown is idempotent and thread-safe).
+        // would have run happens here instead (Shutdown is idempotent and thread-safe). A second
+        // call returns at once, so session end and Exit don't each wait out the timeout.
         internal bool Stop(TimeSpan timeout)
         {
             _running = false;
-            if (_thread is null || _thread.Join(timeout))
+            var thread = Interlocked.Exchange(ref _thread, null);
+            if (thread is null || thread.Join(timeout))
                 return true;
 
             AppLog.Default.Warning(

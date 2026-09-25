@@ -79,6 +79,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - An error the app recovers from was reported as a crash, and one that kept repeating (in the
   on-screen keyboard, for example) could stack up error boxes. It now shows one short notice per
   run and keeps going; a real crash is still reported once.
+- Signing out or shutting down with "Use HidHide" on could leave the controller hidden until the
+  app next started. The app now unhides it and removes the virtual pad before Windows closes it.
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the

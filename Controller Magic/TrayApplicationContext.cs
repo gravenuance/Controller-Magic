@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using Microsoft.Win32;
 
 namespace ControllerMagic
 {
@@ -60,6 +61,9 @@ namespace ControllerMagic
 
             // Last: its events land on _overlay, so a press before this point would find it null.
             _controllerPoller.Start();
+
+            // Raised on this thread: SystemEvents' hidden window lives on the first STA subscriber.
+            SystemEvents.SessionEnded += OnSessionEnded;
 
             // Startup-task housekeeping (migrating a legacy Run-key install, defaulting startup to
             // on for a first-ever run) spawns schtasks.exe - run it in the background instead of
@@ -205,8 +209,17 @@ namespace ControllerMagic
             ExitThread();
         }
 
+        // Windows ends the process soon after this returns, without the message loop ever
+        // unwinding, so the uncloak and virtual-pad removal have to run here and now.
+        private void OnSessionEnded(object? sender, SessionEndedEventArgs e)
+        {
+            AppLog.Default.Info($"Session ending ({e.Reason}); shutting down");
+            ExitThread();
+        }
+
         protected override void ExitThreadCore()
         {
+            SystemEvents.SessionEnded -= OnSessionEnded;
             _controllerPoller.KeyboardModeChanged -= OnKeyboardModeChanged;
             _controllerPoller.PassthroughNoticeRaised -= OnPassthroughNotice;
             _controllerPoller.Stop();
@@ -231,6 +244,7 @@ namespace ControllerMagic
         {
             if (disposing)
             {
+                SystemEvents.SessionEnded -= OnSessionEnded;
                 _trayIcon.Dispose();
                 _overlay?.Dispose();
                 _settingsIcon.Dispose();
