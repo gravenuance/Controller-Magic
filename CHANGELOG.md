@@ -72,6 +72,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   was ended after three days. The task now covers only your account, never needs a prompt, and
   keeps running. After the app is moved, the task is pointed at the new location on next launch.
 - Old log files piled up forever. Only the three most recent archived logs are now kept.
+- Exit could hang forever if reading the controller got stuck. It now gives up after a few
+  seconds and still unhides the controller.
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the

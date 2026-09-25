@@ -303,12 +303,17 @@ namespace ControllerMagic
         private PadButtons _stableButtons;
         private readonly HeldButtonGate _heldOverButtons = new();
 
-        public void Start()
+        // Longer than the passthrough's own shutdown wait, which runs inside the joined thread.
+        private static readonly TimeSpan StopWait = TimeSpan.FromSeconds(5);
+
+        public void Start() => StartThread(Loop);
+
+        internal void StartThread(ThreadStart body)
         {
             if (_running) return;
 
             _running = true;
-            _thread = new Thread(Loop)
+            _thread = new Thread(body)
             {
                 IsBackground = true,
                 Name = "ControllerPoller"
@@ -316,10 +321,20 @@ namespace ControllerMagic
             _thread.Start();
         }
 
-        public void Stop()
+        public void Stop() => Stop(StopWait);
+
+        // Bounded so Exit can't hang on a loop stuck in a native call; the uncloak its finally
+        // would have run happens here instead (Shutdown is idempotent and thread-safe).
+        internal bool Stop(TimeSpan timeout)
         {
             _running = false;
-            _thread?.Join();
+            if (_thread is null || _thread.Join(timeout))
+                return true;
+
+            AppLog.Default.Warning(
+                $"ControllerPoller: poll thread still running {timeout.TotalSeconds:0.##}s after Stop; shutting down without it");
+            _passthrough.Shutdown();
+            return false;
         }
 
         // Loop()'s finally block already disconnects/uncloaks via _passthrough.Shutdown() by the
