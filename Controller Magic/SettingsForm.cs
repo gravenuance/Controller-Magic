@@ -17,11 +17,18 @@ namespace ControllerMagic
             public RadialGauge? Gauge { get; init; }
             public Func<int, double>? GaugeFraction { get; init; }
 
+            // What the slider last showed, so reshowing the window redraws only a changed value.
+            private int? _shown;
+
             public void RefreshFromSettings()
             {
-                Slider.Value = Math.Clamp(Get(), Slider.Minimum, Slider.Maximum);
-                Readout.Text = FormatReadout(Slider.Value);
+                int value = Math.Clamp(Get(), Slider.Minimum, Slider.Maximum);
+                if (value == _shown)
+                    return;
+                Slider.Value = value;
+                Readout.Text = FormatReadout(value);
                 UpdateViz();
+                _shown = value;
             }
 
             public void Commit()
@@ -30,6 +37,7 @@ namespace ControllerMagic
                 RequestSave();
                 Readout.Text = FormatReadout(Slider.Value);
                 UpdateViz();
+                _shown = Slider.Value;
             }
 
             private void UpdateViz()
@@ -55,6 +63,9 @@ namespace ControllerMagic
         private readonly ControllerPoller _poller;
         private readonly System.Windows.Forms.Timer _statusTimer;
         private readonly UiOperationRunner _operations = new(AppLog.Default);
+
+        // Each control's refresh for when the kept-alive window is shown again.
+        private readonly List<Action> _onShown = [];
 
         private int _layoutY;
         private int _nextTabIndex;
@@ -168,11 +179,11 @@ namespace ControllerMagic
             BeginCard("Full-screen apps");
             AddChipField(
                 "Keep receiving input from",
-                AppSettings.Instance.WatchedProcessNames,
+                () => AppSettings.Instance.WatchedProcessNames,
                 items => AppSettings.Instance.WatchedProcessNames = items);
             AddChipField(
                 "'S' = Skip Intro on",
-                AppSettings.Instance.StreamingServiceNames,
+                () => AppSettings.Instance.StreamingServiceNames,
                 items => AppSettings.Instance.StreamingServiceNames = items);
             EndCard();
 
@@ -420,6 +431,7 @@ namespace ControllerMagic
             };
             setting.RefreshFromSettings();
             slider.Scroll += (_, __) => setting.Commit();
+            _onShown.Add(setting.RefreshFromSettings);
         }
 
         private void AddStartupToggle()
@@ -464,10 +476,18 @@ namespace ControllerMagic
             // A click that lands before the query returns wins over the (by then stale) query result.
             bool userChanged = false;
             toggle.Toggled += (_, __) => userChanged = true;
-            _ = _operations.RunAsync(
-                "checking Start with Windows",
-                ct => ReconcileStartupToggleAsync(toggle, () => userChanged, ct),
-                _ => { });
+            _onShown.Add(() =>
+            {
+                // A change still being applied from before the hide sets the real state itself.
+                if (toggle.Busy)
+                    return;
+                userChanged = false;
+                toggle.Checked = AppSettings.Instance.RunAtStartup;
+                _ = _operations.RunAsync(
+                    "checking Start with Windows",
+                    ct => ReconcileStartupToggleAsync(toggle, () => userChanged, ct),
+                    _ => { });
+            });
         }
 
         // Busy until schtasks finishes, so rapid clicks can't run overlapping changes. Not cancelled
@@ -494,7 +514,7 @@ namespace ControllerMagic
         {
             bool actuallyEnabled = await StartupHelper.IsEnabledAsync(ct).ConfigureAwait(true);
 
-            if (ct.IsCancellationRequested || toggle.IsDisposed || userChanged())
+            if (ct.IsCancellationRequested || toggle.IsDisposed || toggle.Busy || userChanged())
                 return;
 
             toggle.Checked = actuallyEnabled;
@@ -560,7 +580,13 @@ namespace ControllerMagic
                     ShowStatus(text);
                 });
 
-            _ = _operations.RunAsync("checking HidHide drivers", ct => ReconcileHidHideToggleAsync(toggle, ShowStatus, ct), ShowStatus);
+            _onShown.Add(() =>
+            {
+                if (toggle.Busy)
+                    return;
+                toggle.Checked = AppSettings.Instance.UseHidHide;
+                _ = _operations.RunAsync("checking HidHide drivers", ct => ReconcileHidHideToggleAsync(toggle, ShowStatus, ct), ShowStatus);
+            });
         }
 
         // Busy for the whole change, so a second click can't start a second driver install.
@@ -648,7 +674,7 @@ namespace ControllerMagic
             showStatus(enabled ? string.Empty : HidHideNeedsDriversText);
         }
 
-        private void AddChipField(string label, List<string> initialItems, Action<List<string>> onChanged)
+        private void AddChipField(string label, Func<List<string>> getItems, Action<List<string>> onChanged)
         {
             if (_card == null) throw new InvalidOperationException("AddChipField called outside a card");
 
@@ -671,7 +697,7 @@ namespace ControllerMagic
                 AccessibleName = label,
             };
             chips.ApplyPalette(Theme.Bg, Theme.Line, Theme.Ink, Theme.Muted, Theme.Surface2, Theme.Accent);
-            chips.SetItems(initialItems);
+            chips.SetItems(getItems());
             chips.ItemsChanged += items =>
             {
                 onChanged(items);
@@ -679,6 +705,12 @@ namespace ControllerMagic
             };
             _card.Controls.Add(chips);
             chips.PerformLayout();
+            _onShown.Add(() =>
+            {
+                var items = getItems();
+                if (!chips.Items.SequenceEqual(items, StringComparer.Ordinal))
+                    chips.SetItems(items);
+            });
 
             _cardY += Math.Max(chips.Height, 32) + 10;
         }
@@ -687,21 +719,36 @@ namespace ControllerMagic
 
         private static void RequestSave() => AppSettings.Instance.RequestSave();
 
-        // Cancelled rather than left running, so nothing touches this window's controls after close;
-        // the runner renews its token in case the same form is shown again.
-        protected override void OnFormClosed(FormClosedEventArgs e)
-        {
-            _operations.CancelAll();
-            AppSettings.Instance.FlushPendingSave();
-            base.OnFormClosed(e);
-        }
-
+        // Closing only hides this window, so showing and hiding start and stop its background work.
         protected override void OnVisibleChanged(EventArgs e)
         {
             _statusTimer.Enabled = Visible;
             if (Visible)
+            {
                 RefreshStatus();
+                foreach (var refresh in _onShown)
+                    refresh();
+            }
+            // Skipped during teardown, which has already disposed the runner.
+            else if (!Disposing && !IsDisposed)
+            {
+                StopBackgroundWork();
+            }
             base.OnVisibleChanged(e);
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            StopBackgroundWork();
+            base.OnFormClosed(e);
+        }
+
+        // Cancelled rather than left running, so nothing touches controls while hidden; the runner
+        // renews its token for the next show.
+        private void StopBackgroundWork()
+        {
+            _operations.CancelAll();
+            AppSettings.Instance.FlushPendingSave();
         }
 
         // ============ window dragging ============

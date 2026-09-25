@@ -29,6 +29,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   60 times a second, so it uses less CPU while open.
 - Releases now include the standalone exe, SHA-256 checksums (`SHA256SUMS.txt`) and signed
   build provenance, so a download can be checked against the tagged build.
+- Closing Settings now hides it instead of discarding it, so reopening is instant and it
+  returns where you left it. Values changed elsewhere meanwhile are shown when it reopens.
 
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen

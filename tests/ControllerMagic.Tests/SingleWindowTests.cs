@@ -10,11 +10,14 @@ public class SingleWindowTests
     private sealed class HeadlessForm : Form
     {
         public int ShowCount { get; private set; }
+        public int HideCount { get; private set; }
 
         protected override void SetVisibleCore(bool value)
         {
             if (value)
                 ShowCount++;
+            else
+                HideCount++;
         }
     }
 
@@ -76,5 +79,69 @@ public class SingleWindowTests
         Assert.Equal(2, created.Count);
         Assert.True(created[0].IsDisposed);
         Assert.False(created[1].IsDisposed);
+    });
+
+    [Fact]
+    public void UserClose_HidesTheWindowAndShowingAgainReusesIt() => OnStaThread(() =>
+    {
+        var created = new List<HeadlessForm>();
+        using var window = new SingleWindow<HeadlessForm>(() =>
+        {
+            var form = new HeadlessForm();
+            created.Add(form);
+            return form;
+        });
+
+        window.ShowOrActivate();
+        // A handle makes Close() go through FormClosing, as it does for a real shown window.
+        _ = created[0].Handle;
+        created[0].Close();
+        bool disposedByUserClose = created[0].IsDisposed;
+        int hidesAfterUserClose = created[0].HideCount;
+        window.ShowOrActivate();
+
+        Assert.False(disposedByUserClose);
+        Assert.Equal(1, hidesAfterUserClose);
+        Assert.Single(created);
+        Assert.Equal(2, created[0].ShowCount);
+    });
+
+    [Fact]
+    public void Close_AfterTheWindowWasHidden_ReallyClosesIt() => OnStaThread(() =>
+    {
+        var created = new List<HeadlessForm>();
+        using var window = new SingleWindow<HeadlessForm>(() =>
+        {
+            var form = new HeadlessForm();
+            created.Add(form);
+            return form;
+        });
+
+        window.ShowOrActivate();
+        _ = created[0].Handle;
+        created[0].Close();
+        window.Close();
+
+        Assert.True(created[0].IsDisposed);
+    });
+
+    [Fact]
+    public void Close_WhileShown_ReallyClosesIt() => OnStaThread(() =>
+    {
+        var created = new List<HeadlessForm>();
+        using var window = new SingleWindow<HeadlessForm>(() =>
+        {
+            var form = new HeadlessForm();
+            created.Add(form);
+            return form;
+        });
+
+        window.ShowOrActivate();
+        _ = created[0].Handle;
+        window.Close();
+        window.ShowOrActivate();
+
+        Assert.True(created[0].IsDisposed);
+        Assert.Equal(2, created.Count);
     });
 }

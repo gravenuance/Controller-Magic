@@ -178,13 +178,13 @@ namespace ControllerMagic
         private void OnSettingsClick(object? sender, EventArgs e) => _settings.ShowOrActivate();
 
         // Diagnostic pair for the same handle-exhaustion investigation as
-        // GamepadPassthroughController.ApplyTransition: repeated open/close cycles show whether
-        // the settings window itself leaks.
+        // GamepadPassthroughController.ApplyTransition: repeated show/hide cycles show whether
+        // the kept-alive settings window leaks.
         private SettingsForm CreateSettingsForm()
         {
             ResourceUsageMonitor.LogSnapshot("before-settings-open");
             var form = new SettingsForm(_controllerPoller);
-            form.FormClosed += (_, _) => ResourceUsageMonitor.LogSnapshot("after-settings-close");
+            form.VisibleChanged += (_, _) => ResourceUsageMonitor.LogSnapshot(form.Visible ? "settings-shown" : "settings-hidden");
             return form;
         }
 
