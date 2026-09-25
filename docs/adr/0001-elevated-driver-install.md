@@ -53,6 +53,9 @@ step 3. This option was chosen because it closes the race without shipping a sec
   (the ownership check refuses it), but can't get their own code run.
 - The elevated process logs to the elevating account's `%LocalAppData%\ControllerMagic\app.log`.
   With over-the-shoulder elevation that is the admin's profile, not the user's.
+- The app's own exe usually lives in a user-writable folder, so a same-user process could replace
+  it before the self-relaunch. That is true of any self-elevating portable app and is not closed
+  here; installing the exe under Program Files closes it.
 - The installers are Advanced Installer bootstrappers that unpack into the elevated user's temp
   folder. How safely they do that is up to them and outside this app's control.
 - Revisit if the app ever ships an installer or MSIX package: a service or a packaged elevated
