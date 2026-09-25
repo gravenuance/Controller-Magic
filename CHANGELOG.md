@@ -11,6 +11,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 ### Changed
 - Less CPU use when no Xbox controller is plugged in: empty controller slots are checked once a
   second instead of 125 times. A newly plugged Xbox controller is picked up within a second.
+- While no PlayStation, Switch or other SDL controller is connected, the app no longer lists all
+  game devices 125 times a second; it looks when Windows reports a new one.
 
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen

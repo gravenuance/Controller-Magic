@@ -147,8 +147,8 @@ internal sealed class Sdl2PadReader : IDisposable
 
     // Public so the poll loop can run this every tick regardless of which source ends up
     // supplying the frame - see the call site in ControllerPoller.Loop. Draining the event queue
-    // alone isn't enough: TryOpenFirstAvailable() also needs to run whenever no controller is
-    // currently open, or a second, non-XInput controller plugged in while an XInput one is already
+    // alone isn't enough: TryOpenFirstAvailable() also needs to run when a controller arrives while
+    // none is open, or a second, non-XInput controller plugged in while an XInput one is already
     // connected and successfully reading would never get picked up - since TryGetLatest (the only
     // other place that used to call it) is skipped by `gotXInput ||` short-circuiting past it for
     // as long as XInput keeps winning. Restarting the app "fixed" it only because that reset
@@ -162,11 +162,21 @@ internal sealed class Sdl2PadReader : IDisposable
         {
             if (e.type == SDL.SDL_EventType.SDL_CONTROLLERDEVICEREMOVED && e.cdevice.which == _controllerInstanceId)
                 CloseController();
+            else if (e.type is SDL.SDL_EventType.SDL_CONTROLLERDEVICEADDED or SDL.SDL_EventType.SDL_JOYDEVICEADDED)
+                _rescanPending = true;
         }
 
-        if (_controller == IntPtr.Zero)
+        if (_controller == IntPtr.Zero && (_rescanPending || RetryOpenDue()))
             TryOpenFirstAvailable();
     }
+
+    // Enumerating joysticks every tick while nothing is open costs several native calls and a path
+    // string per device; SDL reports arrivals (including those present at init) as events instead.
+    private bool _rescanPending = true;
+    private long? _openFailedAt;
+    private static readonly TimeSpan RetryOpenAfter = TimeSpan.FromSeconds(1);
+
+    private bool RetryOpenDue() => _openFailedAt is { } failedAt && _clock.GetElapsedTime(failedAt) >= RetryOpenAfter;
 
     // Sent only when the colour changes; a pad without a lightbar is simply skipped.
     public void SetLightbar(Color color)
@@ -225,6 +235,8 @@ internal sealed class Sdl2PadReader : IDisposable
 
     private void TryOpenFirstAvailable()
     {
+        _rescanPending = false;
+        _openFailedAt = null;
         int count = SDL.SDL_NumJoysticks();
         for (int i = 0; i < count; i++)
         {
@@ -233,8 +245,13 @@ internal sealed class Sdl2PadReader : IDisposable
 
             var handle = SDL.SDL_GameControllerOpen(i);
             if (handle == IntPtr.Zero)
+            {
+                // Retried on a timer, since no further event may come for a pad that's already there.
+                _openFailedAt ??= _clock.GetTimestamp();
                 continue;
+            }
 
+            _openFailedAt = null;
             _controller = handle;
             IntPtr joystick = SDL.SDL_GameControllerGetJoystick(handle);
             _controllerInstanceId = SDL.SDL_JoystickInstanceID(joystick);
@@ -279,7 +296,11 @@ internal sealed class Sdl2PadReader : IDisposable
     private void CloseController()
     {
         if (_controller != IntPtr.Zero)
+        {
             SDL.SDL_GameControllerClose(_controller);
+            // Another pad may already be attached, and it won't announce itself again.
+            _rescanPending = true;
+        }
 
         _controller = IntPtr.Zero;
         _controllerInstanceId = -1;
