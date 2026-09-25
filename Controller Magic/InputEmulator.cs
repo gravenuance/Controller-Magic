@@ -2,81 +2,82 @@
 
 namespace ControllerMagic
 {
-    internal static class InputEmulator
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct INPUT
     {
-        [StructLayout(LayoutKind.Sequential)]
-        struct INPUT
-        {
-            public uint type;
-            public InputUnion U;
-        }
+        public uint type;
+        public InputUnion U;
+    }
 
-        [StructLayout(LayoutKind.Explicit)]
-        struct InputUnion
-        {
-            [FieldOffset(0)] public MOUSEINPUT mi;
-            [FieldOffset(0)] public KEYBDINPUT ki;
-        }
+    [StructLayout(LayoutKind.Explicit)]
+    internal struct InputUnion
+    {
+        [FieldOffset(0)] public MOUSEINPUT mi;
+        [FieldOffset(0)] public KEYBDINPUT ki;
+    }
 
-        [StructLayout(LayoutKind.Sequential)]
-        struct MOUSEINPUT
-        {
-            public int dx;
-            public int dy;
-            public uint mouseData;
-            public uint dwFlags;
-            public uint time;
-            public IntPtr dwExtraInfo;
-        }
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MOUSEINPUT
+    {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
 
-        [Flags]
-        private enum MouseEventFlags : uint
-        {
-            MOUSEEVENTF_WHEEL = 0x0800,
-            MOUSEEVENTF_HWHEEL = 0x01000
-        }
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct KEYBDINPUT
+    {
+        public ushort wVk;
+        public ushort wScan;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
 
-        [DllImport("user32.dll")]
-        private static extern void mouse_event(
-        uint dwFlags,
-        uint dx,
-        uint dy,
-        uint dwData,
-        UIntPtr dwExtraInfo);
+    // Where synthesized input goes; returns how many events were inserted, as SendInput does.
+    internal interface IInputSink
+    {
+        uint Send(ReadOnlySpan<INPUT> inputs);
+    }
 
-        public static void MouseWheelVertical(int delta)
-        {
-            // delta: +120 up, -120 down (standard Windows wheel step)
-            mouse_event((uint)MouseEventFlags.MOUSEEVENTF_WHEEL, 0, 0, (uint)delta, UIntPtr.Zero);
-        }
-
-        public static void MouseWheelHorizontal(int delta)
-        {
-            mouse_event((uint)MouseEventFlags.MOUSEEVENTF_HWHEEL, 0, 0, (uint)delta, UIntPtr.Zero);
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct KEYBDINPUT
-        {
-            public ushort wVk;
-            public ushort wScan;
-            public uint dwFlags;
-            public uint time;
-            public IntPtr dwExtraInfo;
-        }
-
-        const uint INPUT_MOUSE = 0;
-        const uint INPUT_KEYBOARD = 1;
-        //const uint MOUSEEVENTF_MOVE = 0x0001;
-        const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
-        const uint MOUSEEVENTF_LEFTUP = 0x0004;
-        const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
-        const uint MOUSEEVENTF_RIGHTUP = 0x0010;
-        //const uint MOUSEEVENTF_ABSOLUTE = 0x8000;   // add this
-        const uint KEYEVENTF_KEYUP = 0x0002;
+    internal sealed class SendInputSink : IInputSink
+    {
+        private static readonly int InputSize = Marshal.SizeOf<INPUT>();
 
         [DllImport("user32.dll", SetLastError = true)]
-        static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+        private static extern uint SendInput(uint nInputs, ref INPUT pInputs, int cbSize);
+
+        public uint Send(ReadOnlySpan<INPUT> inputs) =>
+            inputs.IsEmpty ? 0 : SendInput((uint)inputs.Length, ref MemoryMarshal.GetReference(inputs), InputSize);
+    }
+
+    internal sealed class InputEmulator
+    {
+        internal const uint INPUT_MOUSE = 0;
+        internal const uint INPUT_KEYBOARD = 1;
+        internal const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+        internal const uint MOUSEEVENTF_LEFTUP = 0x0004;
+        internal const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+        internal const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+        internal const uint MOUSEEVENTF_WHEEL = 0x0800;
+        internal const uint MOUSEEVENTF_HWHEEL = 0x1000;
+        internal const uint KEYEVENTF_KEYUP = 0x0002;
+
+        private readonly IInputSink _sink;
+        private bool _leftIsDown;
+        private bool _sendFailing;
+
+        public InputEmulator(IInputSink sink)
+        {
+            _sink = sink;
+        }
+
+        public void MouseWheelVertical(int delta) => SendMouse(MOUSEEVENTF_WHEEL, unchecked((uint)delta));
+
+        public void MouseWheelHorizontal(int delta) => SendMouse(MOUSEEVENTF_HWHEEL, unchecked((uint)delta));
 
         [DllImport("user32.dll")]
         private static extern bool GetCursorPos(out POINT lpPoint);
@@ -122,66 +123,97 @@ namespace ControllerMagic
             SetCursorPos(targetX, targetY);
         }
 
-        static bool _leftIsDown;
-        public static void SetLeftButtonState(bool pressed)
+        // Committed only once Windows accepts it: UIPI drops input aimed at an elevated window, and
+        // the caller re-asserts the wanted state every tick, so a dropped press or release is retried.
+        public void SetLeftButtonState(bool pressed)
         {
             if (pressed == _leftIsDown) return;
-            _leftIsDown = pressed;
-            var inputs = new INPUT[1];
-            inputs[0].type = INPUT_MOUSE;
-            inputs[0].U.mi.dwFlags = pressed ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
-            _ = SendInput(1, inputs, Marshal.SizeOf<INPUT>());
-        }
-        public static void LeftClick()
-        {
-            var inputs = new INPUT[2];
-
-            inputs[0].type = INPUT_MOUSE;
-            inputs[0].U.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
-
-            inputs[1].type = INPUT_MOUSE;
-            inputs[1].U.mi.dwFlags = MOUSEEVENTF_LEFTUP;
-
-            _ = SendInput(2, inputs, Marshal.SizeOf<INPUT>());
-        }
-        public static void RightClick()
-        {
-            var inputs = new INPUT[2];
-
-            inputs[0].type = INPUT_MOUSE;
-            inputs[0].U.mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
-
-            inputs[1].type = INPUT_MOUSE;
-            inputs[1].U.mi.dwFlags = MOUSEEVENTF_RIGHTUP;
-
-            _ = SendInput(2, inputs, Marshal.SizeOf<INPUT>());
+            if (SendMouse(pressed ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP))
+                _leftIsDown = pressed;
         }
 
+        public void LeftClick() => Click(MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP);
 
-        public static void SendKey(ushort vk)
+        public void RightClick() => Click(MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP);
+
+        public void SendKey(ushort vk)
         {
-            var inputs = new INPUT[2];
-
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].U.ki.wVk = vk; // key down
-
-            inputs[1].type = INPUT_KEYBOARD;
-            inputs[1].U.ki.wVk = vk;
-            inputs[1].U.ki.dwFlags = KEYEVENTF_KEYUP; // key up
-
-            _ = SendInput(2, inputs, Marshal.SizeOf<INPUT>());
+            Span<INPUT> inputs = stackalloc INPUT[2];
+            inputs[0] = Key(vk, up: false);
+            inputs[1] = Key(vk, up: true);
+            Send(inputs);
         }
 
-        public static void SendKey(ushort vk, bool pressed)
+        // One batch, so nothing typed or clicked in between can land with the modifier held.
+        public void SendKeyWithModifier(ushort modifierVk, ushort vk)
         {
-            var inputs = new INPUT[1];
+            Span<INPUT> inputs = stackalloc INPUT[4];
+            inputs[0] = Key(modifierVk, up: false);
+            inputs[1] = Key(vk, up: false);
+            inputs[2] = Key(vk, up: true);
+            inputs[3] = Key(modifierVk, up: true);
+            Send(inputs);
+        }
 
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].U.ki.wVk = vk; // key down
-            if (!pressed)
-                inputs[0].U.ki.dwFlags = KEYEVENTF_KEYUP;
+        public void LeftClickWithModifier(ushort modifierVk)
+        {
+            Span<INPUT> inputs = stackalloc INPUT[4];
+            inputs[0] = Key(modifierVk, up: false);
+            inputs[1] = Mouse(MOUSEEVENTF_LEFTDOWN);
+            inputs[2] = Mouse(MOUSEEVENTF_LEFTUP);
+            inputs[3] = Key(modifierVk, up: true);
+            Send(inputs);
+        }
 
-            _ = SendInput(1, inputs, Marshal.SizeOf<INPUT>());
+        private void Click(uint downFlag, uint upFlag)
+        {
+            Span<INPUT> inputs = stackalloc INPUT[2];
+            inputs[0] = Mouse(downFlag);
+            inputs[1] = Mouse(upFlag);
+            Send(inputs);
+        }
+
+        private bool SendMouse(uint flags, uint mouseData = 0)
+        {
+            Span<INPUT> inputs = stackalloc INPUT[1];
+            inputs[0] = Mouse(flags, mouseData);
+            return Send(inputs);
+        }
+
+        private static INPUT Mouse(uint flags, uint mouseData = 0)
+        {
+            var input = new INPUT { type = INPUT_MOUSE };
+            input.U.mi.dwFlags = flags;
+            input.U.mi.mouseData = mouseData;
+            return input;
+        }
+
+        private static INPUT Key(ushort vk, bool up)
+        {
+            var input = new INPUT { type = INPUT_KEYBOARD };
+            input.U.ki.wVk = vk;
+            input.U.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+            return input;
+        }
+
+        // Logged once per run of failures: a blocked foreground window rejects every tick's input.
+        private bool Send(ReadOnlySpan<INPUT> inputs)
+        {
+            uint sent = _sink.Send(inputs);
+            if (sent == inputs.Length)
+            {
+                _sendFailing = false;
+                return true;
+            }
+
+            if (!_sendFailing)
+            {
+                AppLog.Default.Warning(
+                    $"InputEmulator: SendInput inserted {sent} of {inputs.Length} events (Win32 error {Marshal.GetLastPInvokeError()}); the foreground window may be elevated");
+                _sendFailing = true;
+            }
+
+            return false;
         }
     }
 }

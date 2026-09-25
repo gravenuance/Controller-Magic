@@ -241,14 +241,22 @@ namespace ControllerMagic
         private readonly GamepadPassthroughController _passthrough;
 
         public ControllerPoller()
-            : this(new GamepadPassthroughController())
+            : this(new InputEmulator(new SendInputSink()))
         {
         }
 
-        internal ControllerPoller(GamepadPassthroughController passthrough)
+        internal ControllerPoller(InputEmulator input)
+            : this(new GamepadPassthroughController(), input)
+        {
+        }
+
+        internal ControllerPoller(GamepadPassthroughController passthrough, InputEmulator input)
         {
             _passthrough = passthrough;
+            _input = input;
         }
+
+        private readonly InputEmulator _input;
 
         private const int SlowScrollIntervalMs = 200;
         private const int FastScrollIntervalMs = 20;
@@ -632,7 +640,7 @@ namespace ControllerMagic
         {
             _touchpadMouse.Reset();
             _touchpadHoldsLeft = false;
-            InputEmulator.SetLeftButtonState(false);
+            _input.SetLeftButtonState(false);
         }
 
         // Interpolating ControllerStatusText fresh every tick (the loop runs at ~125Hz) allocated a
@@ -748,10 +756,10 @@ namespace ControllerMagic
             switch (touch.Click)
             {
                 case TouchClick.Left:
-                    InputEmulator.LeftClick();
+                    _input.LeftClick();
                     break;
                 case TouchClick.Right:
-                    InputEmulator.RightClick();
+                    _input.RightClick();
                     break;
                 case TouchClick.None:
                     break;
@@ -777,15 +785,21 @@ namespace ControllerMagic
         private void HandleScroll(short ry, short rx)
         {
             long now = Environment.TickCount64;
-            TryScroll(ry, now, ref _lastScrollTick, InputEmulator.MouseWheelVertical);
-            TryScroll(rx, now, ref _lastHorizontalScrollTick, InputEmulator.MouseWheelHorizontal);
+            int vertical = TryScroll(ry, now, ref _lastScrollTick);
+            if (vertical != 0)
+                _input.MouseWheelVertical(vertical);
+
+            int horizontal = TryScroll(rx, now, ref _lastHorizontalScrollTick);
+            if (horizontal != 0)
+                _input.MouseWheelHorizontal(horizontal);
         }
 
-        private static void TryScroll(int axisValue, long now, ref long lastTick, Action<int> sendWheel)
+        // Returns the wheel delta to send now, or 0.
+        private static int TryScroll(int axisValue, long now, ref long lastTick)
         {
             int abs = axisValue == short.MinValue ? short.MaxValue : Math.Abs(axisValue);
             if (abs < ScrollDeadZone)
-                return;
+                return 0;
 
             double norm = (abs - ScrollDeadZone) / (32767.0 - ScrollDeadZone);
             if (norm < 0) norm = 0;
@@ -793,14 +807,14 @@ namespace ControllerMagic
 
             int interval = (int)(SlowScrollIntervalMs - norm * (SlowScrollIntervalMs - FastScrollIntervalMs));
             if (now - lastTick < interval)
-                return;
+                return 0;
 
             lastTick = now;
 
             int delta = (int)(WheelNotch * norm);
             if (delta == 0) delta = WheelNotch;
 
-            sendWheel(axisValue > 0 ? delta : -delta);
+            return axisValue > 0 ? delta : -delta;
         }
 
         public event Action<bool>? KeyboardModeChanged;
@@ -857,64 +871,52 @@ namespace ControllerMagic
 
             // Driven directly off current state (not edges) so the button can never get stuck
             // down if keyboard mode is toggled while A or the touchpad is still held.
-            InputEmulator.SetLeftButtonState(!_keyboardMode && (A_down || _touchpadHoldsLeft));
+            _input.SetLeftButtonState(!_keyboardMode && (A_down || _touchpadHoldsLeft));
 
             if (!_keyboardMode)
             {
                 if (B_pressed && !_streaming)
-                    InputEmulator.SendKey(VK_BACK);
+                    _input.SendKey(VK_BACK);
                 else if (B_pressed)
-                    InputEmulator.SendKey(VK_ESCAPE);
+                    _input.SendKey(VK_ESCAPE);
 
                 // 'S' is only bound to Skip Intro for actual streaming services - see the
                 // _streaming computation in FullscreenHelper. Generic fullscreen apps (VLC, Steam,
                 // Explorer, etc.) fall through to a plain right-click instead.
                 if (X_pressed && _streaming)
-                    InputEmulator.SendKey(VK_S);
+                    _input.SendKey(VK_S);
                 else if (X_pressed)
-                    InputEmulator.RightClick();
+                    _input.RightClick();
 
                 if (Y_pressed)
-                    InputEmulator.SendKey(VK_MEDIA_PLAY_PAUSE);
+                    _input.SendKey(VK_MEDIA_PLAY_PAUSE);
 
                 if (_watching || _streaming)
                 {
                     if (Up_pressed)
-                        InputEmulator.SendKey(VK_UP);
+                        _input.SendKey(VK_UP);
                     if (Down_pressed)
-                        InputEmulator.SendKey(VK_DOWN);
+                        _input.SendKey(VK_DOWN);
                     if (Left_pressed)
-                        InputEmulator.SendKey(VK_LEFT);
+                        _input.SendKey(VK_LEFT);
                     if (Right_pressed)
-                        InputEmulator.SendKey(VK_RIGHT);
+                        _input.SendKey(VK_RIGHT);
 
                     // Netflix's documented shortcut for previous/next episode.
                     if (LB_pressed)
-                    {
-                        InputEmulator.SendKey(VK_SHIFT, true);
-                        InputEmulator.SendKey(VK_LEFT);
-                        InputEmulator.SendKey(VK_SHIFT, false);
-                    }
+                        _input.SendKeyWithModifier(VK_SHIFT, VK_LEFT);
                     if (RB_pressed)
-                    {
-                        InputEmulator.SendKey(VK_SHIFT, true);
-                        InputEmulator.SendKey(VK_RIGHT);
-                        InputEmulator.SendKey(VK_SHIFT, false);
-                    }
+                        _input.SendKeyWithModifier(VK_SHIFT, VK_RIGHT);
                 }
                 if (RS_pressed && !A_down)
-                {
-                    InputEmulator.SendKey(VK_CTRL, true);
-                    InputEmulator.LeftClick();
-                    InputEmulator.SendKey(VK_CTRL, false);
-                }
+                    _input.LeftClickWithModifier(VK_CTRL);
             }
 
             if (Start_pressed)
-                InputEmulator.SendKey(VK_RETURN);
+                _input.SendKey(VK_RETURN);
 
             if (Back_pressed)
-                InputEmulator.SendKey(VK_ESCAPE);
+                _input.SendKey(VK_ESCAPE);
 
             _prevButtons = buttons;
         }
@@ -976,21 +978,21 @@ namespace ControllerMagic
             if (X_pressed)
             {
                 // Backspace
-                InputEmulator.SendKey(VK_BACK);
+                _input.SendKey(VK_BACK);
                 return;
             }
 
             if (Y_pressed)
             {
                 // Space
-                InputEmulator.SendKey(VK_SPACE);
+                _input.SendKey(VK_SPACE);
                 return;
             }
 
             if (B_pressed)
             {
                 // Period
-                InputEmulator.SendKey(VK_PERIOD);
+                _input.SendKey(VK_PERIOD);
                 return;
             }
 
@@ -1028,7 +1030,7 @@ namespace ControllerMagic
         internal static bool TouchDrivesWheel(int stickSector, WheelSelection? touch) =>
             stickSector < 0 && touch is not null;
 
-        private static void EmitDaisywheelKey(int layer, int sector, int index)
+        private void EmitDaisywheelKey(int layer, int sector, int index)
         {
             var entry = Daisywheel[layer, sector, index];
             if (entry.Vk == 0)
@@ -1036,12 +1038,10 @@ namespace ControllerMagic
             if (entry.HasMod)
             {
                 const ushort VK_SHIFT = 0x10;
-                InputEmulator.SendKey(VK_SHIFT, true);
-                InputEmulator.SendKey(entry.Vk);
-                InputEmulator.SendKey(VK_SHIFT, false);
+                _input.SendKeyWithModifier(VK_SHIFT, entry.Vk);
                 return;
             }
-            InputEmulator.SendKey(entry.Vk);
+            _input.SendKey(entry.Vk);
         }
         private static int GetEntryCount(int layer, int sector)
         {

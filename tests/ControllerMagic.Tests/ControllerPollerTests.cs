@@ -5,6 +5,8 @@ namespace ControllerMagic.Tests;
 
 public class ControllerPollerTests
 {
+    private static ControllerPoller NewPoller() => new(new InputEmulator(new RecordingInputSink()));
+
     [Fact]
     public void ComputeHoldRamp_RampSecondsZeroOrNegative_AlwaysFullSpeed()
     {
@@ -111,7 +113,7 @@ public class ControllerPollerTests
     [Fact]
     public void DebounceButtons_FirstReading_IsNotTrustedYet()
     {
-        using var poller = new ControllerPoller();
+        using var poller = NewPoller();
 
         PadButtons result = poller.DebounceButtons(PadButtons.A);
 
@@ -121,7 +123,7 @@ public class ControllerPollerTests
     [Fact]
     public void DebounceButtons_TwoConsecutiveIdenticalReadings_BecomesStable()
     {
-        using var poller = new ControllerPoller();
+        using var poller = NewPoller();
 
         poller.DebounceButtons(PadButtons.A);
         PadButtons result = poller.DebounceButtons(PadButtons.A);
@@ -132,7 +134,7 @@ public class ControllerPollerTests
     [Fact]
     public void DebounceButtons_SingleTickFlicker_DoesNotDisturbAnAlreadyStableValue()
     {
-        using var poller = new ControllerPoller();
+        using var poller = NewPoller();
         poller.DebounceButtons(PadButtons.A);
         poller.DebounceButtons(PadButtons.A); // now stable at A
 
@@ -148,7 +150,7 @@ public class ControllerPollerTests
     [Fact]
     public void DebounceButtons_SustainedChange_EventuallyBecomesStable()
     {
-        using var poller = new ControllerPoller();
+        using var poller = NewPoller();
         poller.DebounceButtons(PadButtons.A);
         poller.DebounceButtons(PadButtons.A); // stable at A
 
@@ -161,7 +163,7 @@ public class ControllerPollerTests
     [Fact]
     public void Reconnect_ButtonHeldAtDropThenReleased_IsNotReportedAgain()
     {
-        using var poller = new ControllerPoller();
+        using var poller = NewPoller();
         poller.FilterButtons(PadButtons.A);
         poller.FilterButtons(PadButtons.A); // stable at A
 
@@ -173,7 +175,7 @@ public class ControllerPollerTests
     [Fact]
     public void Reconnect_ButtonHeldThroughTheDrop_IsIgnoredUntilReleased()
     {
-        using var poller = new ControllerPoller();
+        using var poller = NewPoller();
         poller.FilterButtons(PadButtons.B);
         poller.FilterButtons(PadButtons.B);
 

@@ -33,6 +33,10 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   cursor at full speed straight away. Buttons still held on reconnect now wait to be let go.
 - Pushing the left stick fully into the lower-left corner froze the cursor on some controllers,
   and in the on-screen keyboard selected nothing.
+- When Windows refused the app's input (with an app running as administrator in front), a press or
+  release of the left button was lost for good, leaving it stuck up or down. It's now retried.
+- Shift+key and Ctrl+click are sent in one piece, so other input can no longer land in between
+  with Shift or Ctrl still held.
 
 ## [1.8.0] - 2026-09-24
 
