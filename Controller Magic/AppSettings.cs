@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace ControllerMagic
 {
     internal sealed class AppSettings
@@ -10,7 +8,7 @@ namespace ControllerMagic
         // versioning" and is migrated forward the same way any older explicit version would be.
         internal const int CurrentSchemaVersion = 1;
 
-        public static AppSettings Instance { get; } = Load();
+        public static AppSettings Instance { get; } = SettingsStore.CreateDefault().Load();
 
         public int SchemaVersion { get; set; }
 
@@ -64,143 +62,17 @@ namespace ControllerMagic
             "Netflix", "Prime Video", "Disney+", "Hulu", "Max", "Paramount+", "Peacock", "Apple TV"
         };
 
-        // %LocalAppData%, not next to the exe: installs under Program Files (Steam's default
-        // library location, for instance) aren't writable by a standard user, which silently broke
-        // saving here before. Same folder the crash log already uses.
-        private static string SettingsDirectory =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ControllerMagic");
+        // Set by the store that loaded this instance; non-public, so never serialized.
+        internal SettingsStore? Store { get; set; }
 
-        private static string SettingsPath => Path.Combine(SettingsDirectory, "settings.json");
-
-        private static string LegacySettingsPath =>
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
-
-        private static AppSettings Load()
-        {
-            try
-            {
-                if (File.Exists(SettingsPath))
-                {
-                    var raw = LoadFrom(SettingsPath);
-                    var resolved = ResolveLoaded(raw);
-
-                    // Persist the migration immediately when the file was older than current (so
-                    // it isn't re-migrated every launch) or unreadable (so a corrupt file gets
-                    // replaced with valid defaults). A file *newer* than this build understands is
-                    // deliberately left untouched on disk - using in-memory defaults for this
-                    // session must not overwrite data a future version of the app would still make
-                    // sense of, e.g. after a temporary downgrade.
-                    if (raw == null || raw.SchemaVersion < CurrentSchemaVersion)
-                        resolved.Save();
-
-                    return resolved;
-                }
-
-                // One-time migration for installs that still have the old next-to-the-exe file.
-                if (File.Exists(LegacySettingsPath))
-                {
-                    var migrated = ResolveLoaded(LoadFrom(LegacySettingsPath));
-                    migrated.Save();
-                    TryDeleteLegacyFile();
-                    return migrated;
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLog.Default.Warning("AppSettings: failed to load settings", ex);
-            }
-
-            return new AppSettings { SchemaVersion = CurrentSchemaVersion };
-        }
-
-        // The versioning policy itself, isolated from file I/O so it's a plain, directly testable
-        // function: migrate an older (or pre-versioning, SchemaVersion 0) file forward, or fall
-        // back to defaults for a file newer than this build understands, rather than risk
-        // misinterpreting a shape it's never seen.
-        internal static AppSettings ResolveLoaded(AppSettings? loaded)
-        {
-            if (loaded == null)
-                return new AppSettings { SchemaVersion = CurrentSchemaVersion };
-
-            if (loaded.SchemaVersion > CurrentSchemaVersion)
-            {
-                AppLog.Default.Warning(
-                    $"AppSettings: saved settings are schema version {loaded.SchemaVersion}, newer than " +
-                    $"this build understands ({CurrentSchemaVersion}); using defaults instead");
-                return new AppSettings { SchemaVersion = CurrentSchemaVersion };
-            }
-
-            if (loaded.SchemaVersion < CurrentSchemaVersion)
-                loaded.MigrateSchema();
-
-            return loaded;
-        }
-
-        // No prior schema version to migrate *from* yet - every field already has the shape this
-        // version expects, so this just stamps a legacy (pre-versioning) or older file up to
-        // CurrentSchemaVersion. Future bumps add real field migrations here, gated the same way.
-        internal void MigrateSchema()
-        {
-            SchemaVersion = CurrentSchemaVersion;
-        }
-
-        internal static AppSettings? LoadFrom(string path)
-        {
-            try
-            {
-                string json = File.ReadAllText(path);
-                return JsonSerializer.Deserialize<AppSettings>(json);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Default.Warning($"AppSettings: failed to read {path}", ex);
-                return null;
-            }
-        }
-
-        private static void TryDeleteLegacyFile()
-        {
-            try
-            {
-                File.Delete(LegacySettingsPath);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Default.Warning("AppSettings: failed to remove legacy settings file", ex);
-            }
-        }
-
-        private static readonly JsonSerializerOptions SaveOptions = new() { WriteIndented = true };
-
-        // Guards the temp-file-then-move sequence below: Save() is called both from a background
-        // continuation (TrayApplicationContext's startup init) and from the UI-thread save-debounce
-        // timer (SettingsForm), and without this lock two concurrent callers can race on the same
-        // fixed temp path - one's File.Move then fails because the other already moved it away.
-        private static readonly Lock SaveLock = new();
+        internal static AppSettings CreateDefault() => new() { SchemaVersion = CurrentSchemaVersion };
 
         public void Save()
         {
-            lock (SaveLock)
-            {
-                try
-                {
-                    Directory.CreateDirectory(SettingsDirectory);
-                    SchemaVersion = CurrentSchemaVersion;
-                    string json = JsonSerializer.Serialize(this, SaveOptions);
+            if (Store == null)
+                throw new InvalidOperationException("Only settings loaded through a SettingsStore can be saved.");
 
-                    // Atomic: write to a temp file in the same directory, then move it over the real
-                    // path. A same-volume File.Move is atomic at the filesystem level, so a crash or
-                    // power loss mid-write can never leave settings.json truncated or corrupt - a
-                    // reader only ever sees the old file intact or the fully-written new one.
-                    string tempPath = SettingsPath + ".tmp";
-                    File.WriteAllText(tempPath, json);
-                    File.Move(tempPath, SettingsPath, overwrite: true);
-                }
-                catch (Exception ex)
-                {
-                    AppLog.Default.Warning($"AppSettings: failed to save {SettingsPath}", ex);
-                }
-            }
+            Store.Save(this);
         }
     }
 }

@@ -90,6 +90,13 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - Double-clicking the tray icon while Settings was open opened a second Settings window, and the
   two could overwrite each other's changes. The open window is now brought to the front instead.
 
+- A settings file with one bad value or a typo was replaced by defaults, losing every setting.
+  Only the bad values are reset now, and a copy of the damaged file is kept next to it
+  (`settings.json.bad-<date>`). Settings are also copied before being upgraded to a new format.
+- After going back to an older version of the app, its defaults were saved over the newer
+  version's settings and "Start with Windows" was switched back on. The older version now leaves
+  that file and the startup setting alone.
+
 ### Security
 - Driver installers could be swapped by another program between the signature check and the
   admin prompt. The admin prompt now names Controller Magic itself, which copies the installers

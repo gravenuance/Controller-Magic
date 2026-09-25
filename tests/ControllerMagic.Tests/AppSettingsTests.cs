@@ -1,134 +1,186 @@
 using System.Text.Json;
 using ControllerMagic;
+using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
 namespace ControllerMagic.Tests;
 
-public class AppSettingsTests
+public sealed class AppSettingsTests : IDisposable
 {
-    [Fact]
-    public void ResolveLoaded_NullInput_ReturnsDefaultsAtCurrentSchemaVersion()
-    {
-        var resolved = AppSettings.ResolveLoaded(null);
+    private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-03-04T05:06:07Z", System.Globalization.CultureInfo.InvariantCulture);
 
-        Assert.Equal(AppSettings.CurrentSchemaVersion, resolved.SchemaVersion);
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), $"cm-settings-{Guid.NewGuid():N}");
+    private readonly FakeTimeProvider _clock = new(Now);
+
+    public AppSettingsTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose() => Directory.Delete(_dir, recursive: true);
+
+    private string SettingsPath => Path.Combine(_dir, "settings.json");
+    private string LegacyPath => Path.Combine(_dir, "legacy", "settings.json");
+    private string BadBackupPath => SettingsPath + ".bad-20260304050607";
+
+    private SettingsStore CreateStore() =>
+        new(SettingsPath, LegacyPath, _clock, new AppLog(Path.Combine(_dir, "app.log"), _clock));
+
+    private void WriteSettings(string json) => File.WriteAllText(SettingsPath, json);
+
+    private static JsonElement ReadJson(string path) => JsonDocument.Parse(File.ReadAllText(path)).RootElement;
+
+    [Fact]
+    public void Load_NoFile_ReturnsDefaultsWithoutWriting()
+    {
+        var settings = CreateStore().Load();
+
+        Assert.Equal(AppSettings.CurrentSchemaVersion, settings.SchemaVersion);
+        Assert.Equal(4000, settings.StickDeadZone);
+        Assert.False(File.Exists(SettingsPath));
     }
 
     [Fact]
-    public void ResolveLoaded_PreVersioningFile_MigratesToCurrentSchemaVersion()
+    public void Load_CurrentFile_KeepsFieldsAndLeavesFileAlone()
     {
-        // A file written before SchemaVersion existed deserializes with SchemaVersion 0 (the C#
-        // default for a JSON payload missing that key entirely) and its other fields intact.
-        var legacy = new AppSettings { SchemaVersion = 0, StickSensitivity = 0.042f };
+        string json = $$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion}}, "StickDeadZone": 1234, "WatchedProcessNames": ["notepad"]}""";
+        WriteSettings(json);
 
-        var resolved = AppSettings.ResolveLoaded(legacy);
+        var settings = CreateStore().Load();
 
-        Assert.Equal(AppSettings.CurrentSchemaVersion, resolved.SchemaVersion);
-        Assert.Equal(0.042f, resolved.StickSensitivity);
-        Assert.Same(legacy, resolved);
+        Assert.Equal(1234, settings.StickDeadZone);
+        Assert.Equal(["notepad"], settings.WatchedProcessNames);
+        Assert.Equal(json, File.ReadAllText(SettingsPath));
+        Assert.Single(Directory.GetFiles(_dir), SettingsPath);
     }
 
     [Fact]
-    public void ResolveLoaded_CurrentSchemaVersion_ReturnsSameInstanceUnchanged()
+    public void Load_CorruptJson_BacksUpFileBeforeFallingBackToDefaults()
     {
-        var current = new AppSettings { SchemaVersion = AppSettings.CurrentSchemaVersion, StickSensitivity = 0.05f };
+        const string corrupt = "{ this is not valid json";
+        WriteSettings(corrupt);
 
-        var resolved = AppSettings.ResolveLoaded(current);
+        var settings = CreateStore().Load();
 
-        Assert.Same(current, resolved);
-        Assert.Equal(0.05f, resolved.StickSensitivity);
+        Assert.Equal(4000, settings.StickDeadZone);
+        Assert.Equal(corrupt, File.ReadAllText(BadBackupPath));
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("""{"SchemaVersion": "one"}""")]
+    [InlineData("""{"SchemaVersion": -1}""")]
+    [InlineData("""{"StickDeadZone": 1, "StickDeadZone": 2}""")]
+    [InlineData("""{"WatchedProcessNames": {"a": 1, "a": 2}}""")]
+    public void Load_UnusableShape_BacksUpFile(string json)
+    {
+        WriteSettings(json);
+
+        var settings = CreateStore().Load();
+
+        Assert.Equal(AppSettings.CurrentSchemaVersion, settings.SchemaVersion);
+        Assert.Equal(json, File.ReadAllText(BadBackupPath));
     }
 
     [Fact]
-    public void ResolveLoaded_NewerThanCurrentSchemaVersion_FallsBackToDefaultsInstead()
+    public void Load_OneWrongTypedField_KeepsTheOtherFieldsAndBacksUpTheFile()
     {
-        // A file from a future version of the app might have fields shaped in ways this build
-        // doesn't understand - use defaults rather than risk misinterpreting it.
-        var future = new AppSettings { SchemaVersion = AppSettings.CurrentSchemaVersion + 1, StickSensitivity = 0.999f };
+        string json = $$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion}}, "StickDeadZone": "lots", "TouchpadSpeed": 900}""";
+        WriteSettings(json);
 
-        var resolved = AppSettings.ResolveLoaded(future);
+        var settings = CreateStore().Load();
 
-        Assert.Equal(AppSettings.CurrentSchemaVersion, resolved.SchemaVersion);
-        Assert.NotSame(future, resolved);
-        Assert.NotEqual(0.999f, resolved.StickSensitivity);
+        Assert.Equal(4000, settings.StickDeadZone);
+        Assert.Equal(900, settings.TouchpadSpeed);
+        Assert.Equal(json, File.ReadAllText(BadBackupPath));
+        Assert.Equal(900, ReadJson(SettingsPath).GetProperty("TouchpadSpeed").GetInt32());
     }
 
     [Fact]
-    public void LoadFrom_MissingSchemaVersionKey_DeserializesAsZero()
+    public void Load_PreVersioningFile_MigratesAndKeepsACopyOfTheOriginal()
     {
-        // Exactly what a real pre-versioning settings.json on disk looks like: no "SchemaVersion"
-        // key at all.
-        string path = Path.Combine(Path.GetTempPath(), $"cm-settings-{Guid.NewGuid():N}.json");
-        File.WriteAllText(path, """{"StickSensitivity": 0.077}""");
+        const string legacy = """{"StickSensitivity": 0.042}""";
+        WriteSettings(legacy);
 
-        try
-        {
-            var loaded = AppSettings.LoadFrom(path);
+        var settings = CreateStore().Load();
 
-            Assert.NotNull(loaded);
-            Assert.Equal(0, loaded.SchemaVersion);
-            Assert.Equal(0.077f, loaded.StickSensitivity);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        Assert.Equal(0.042f, settings.StickSensitivity);
+        Assert.Equal(legacy, File.ReadAllText(SettingsPath + ".v0.bak"));
+        Assert.Equal(AppSettings.CurrentSchemaVersion, ReadJson(SettingsPath).GetProperty("SchemaVersion").GetInt32());
     }
 
     [Fact]
-    public void LoadFrom_CorruptJson_ReturnsNullInsteadOfThrowing()
+    public void Load_NewerSchema_RunsOnDefaultsAndNeverWritesTheFile()
     {
-        string path = Path.Combine(Path.GetTempPath(), $"cm-settings-{Guid.NewGuid():N}.json");
-        File.WriteAllText(path, "{ this is not valid json");
+        string future = $$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion + 1}}, "StickDeadZone": 777}""";
+        WriteSettings(future);
+        var store = CreateStore();
 
-        try
-        {
-            var loaded = AppSettings.LoadFrom(path);
+        var settings = store.Load();
+        int loadedDeadZone = settings.StickDeadZone;
+        settings.StickDeadZone = 55;
+        settings.Save();
 
-            Assert.Null(loaded);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        Assert.Equal(4000, loadedDeadZone);
+        Assert.True(store.IsReadOnly);
+        Assert.Equal(future, File.ReadAllText(SettingsPath));
+        Assert.Single(Directory.GetFiles(_dir, "settings.json*"));
     }
 
     [Fact]
-    public void LoadFrom_NonexistentPath_ReturnsNullInsteadOfThrowing()
+    public void Load_NewerSchema_TreatsStartupAsAlreadyInitialized()
     {
-        string path = Path.Combine(Path.GetTempPath(), $"cm-settings-{Guid.NewGuid():N}-does-not-exist.json");
+        WriteSettings($$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion + 1}}}""");
 
-        var loaded = AppSettings.LoadFrom(path);
+        var settings = CreateStore().Load();
 
-        Assert.Null(loaded);
+        Assert.True(settings.HasInitializedStartup);
     }
 
-    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
+    [Fact]
+    public void Load_LegacyFile_MovesItToTheNewLocation()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(LegacyPath)!);
+        File.WriteAllText(LegacyPath, """{"StickDeadZone": 2222}""");
+
+        var settings = CreateStore().Load();
+
+        Assert.Equal(2222, settings.StickDeadZone);
+        Assert.Equal(2222, ReadJson(SettingsPath).GetProperty("StickDeadZone").GetInt32());
+        Assert.False(File.Exists(LegacyPath));
+    }
 
     [Fact]
-    public void RoundTrip_SerializeThenLoadFrom_PreservesFields()
+    public void Load_UnreadableLegacyFile_IsBackedUpBeforeBeingRemoved()
     {
-        string path = Path.Combine(Path.GetTempPath(), $"cm-settings-{Guid.NewGuid():N}.json");
-        var original = new AppSettings
-        {
-            StickDeadZone = 1234,
-            WatchedProcessNames = ["notepad", "steam"]
-        };
+        Directory.CreateDirectory(Path.GetDirectoryName(LegacyPath)!);
+        File.WriteAllText(LegacyPath, "not json");
 
-        try
-        {
-            string json = JsonSerializer.Serialize(original, IndentedJson);
-            File.WriteAllText(path, json);
+        CreateStore().Load();
 
-            var loaded = AppSettings.LoadFrom(path);
+        Assert.Equal("not json", File.ReadAllText(BadBackupPath));
+    }
 
-            Assert.NotNull(loaded);
-            Assert.Equal(1234, loaded.StickDeadZone);
-            Assert.Equal(["notepad", "steam"], loaded.WatchedProcessNames);
-        }
-        finally
+    [Fact]
+    public void Save_ThenLoad_RoundTripsFields()
+    {
+        var settings = CreateStore().Load();
+        settings.StickDeadZone = 1234;
+        settings.WatchedProcessNames = ["notepad", "steam"];
+        settings.Save();
+
+        var reloaded = CreateStore().Load();
+
+        Assert.Equal(1234, reloaded.StickDeadZone);
+        Assert.Equal(["notepad", "steam"], reloaded.WatchedProcessNames);
+    }
+
+    [Fact]
+    public void Parse_EveryOlderSchemaVersion_MigratesToCurrent()
+    {
+        for (int version = 0; version < AppSettings.CurrentSchemaVersion; version++)
         {
-            File.Delete(path);
+            var parsed = SettingsStore.Parse($$"""{"SchemaVersion": {{version}}}""");
+
+            Assert.Equal(SettingsFileState.Older, parsed.State);
+            Assert.Equal(AppSettings.CurrentSchemaVersion, parsed.Settings.SchemaVersion);
         }
     }
 }
