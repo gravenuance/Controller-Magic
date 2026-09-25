@@ -9,7 +9,7 @@ public class ControllerPollerFullscreenTests
     public void StandDownForFullscreen_WhilePassthroughActive_UncloaksTheRealPadAndRemovesTheVirtualOne()
     {
         var harness = new PassthroughHarness();
-        using var poller = new ControllerPoller(harness.Controller, new InputEmulator(new RecordingInputSink()));
+        using var poller = new ControllerPoller(harness.Controller, new InputEmulator(new FakeDesktopInput()));
         harness.TickWithPad();
 
         poller.StandDownForFullscreen();

@@ -20,6 +20,9 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   instead of 125 times a second.
 - While a fullscreen app is in front, the app looks up which program it is once instead of ten
   times a second. If that program can't be identified, the reason is logged.
+- Moving the cursor with the stick or touchpad now counts as using the PC, so the screen no
+  longer dims or sleeps while you do it. Pointer speed and "Enhance pointer precision" still
+  don't affect it.
 
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen

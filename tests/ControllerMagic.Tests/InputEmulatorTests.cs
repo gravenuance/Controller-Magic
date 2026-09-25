@@ -1,3 +1,4 @@
+using System.Drawing;
 using ControllerMagic;
 using Xunit;
 
@@ -9,7 +10,7 @@ public class InputEmulatorTests
     private const ushort VkControl = 0x11;
     private const ushort VkLeft = 0x25;
 
-    private readonly RecordingInputSink _sink = new();
+    private readonly FakeDesktopInput _sink = new();
     private readonly InputEmulator _input;
 
     public InputEmulatorTests()
@@ -87,6 +88,73 @@ public class InputEmulatorTests
         var input = Assert.Single(Assert.Single(_sink.Batches));
         AssertMouse(input, InputEmulator.MOUSEEVENTF_WHEEL);
         Assert.Equal(-120, unchecked((int)input.U.mi.mouseData));
+    }
+
+    [Fact]
+    public void Input_HasTheNativeLayoutSendInputChecks()
+    {
+        // SendInput rejects every event when cbSize isn't sizeof(INPUT): 40 bytes on x64, 28 on x86.
+        Assert.Equal(IntPtr.Size == 8 ? 40 : 28, System.Runtime.InteropServices.Marshal.SizeOf<INPUT>());
+    }
+
+    // Windows' mapping of a normalised absolute coordinate back to a pixel.
+    private static Point PixelFor(INPUT move, Rectangle screen) => new(
+        screen.Left + (int)((long)move.U.mi.dx * screen.Width / 65536),
+        screen.Top + (int)((long)move.U.mi.dy * screen.Height / 65536));
+
+    [Fact]
+    public void MoveMouse_SendsOneAbsoluteMoveToTheCursorPlusTheStep()
+    {
+        _sink.CursorPosition = new Point(500, 300);
+
+        _input.MoveMouse(1, -1);
+
+        var move = Assert.Single(Assert.Single(_sink.Batches));
+        AssertMouse(move, InputEmulator.MOUSEEVENTF_MOVE | InputEmulator.MOUSEEVENTF_ABSOLUTE | InputEmulator.MOUSEEVENTF_VIRTUALDESK);
+        Assert.Equal(new Point(501, 299), PixelFor(move, _sink.VirtualScreen));
+        Assert.Empty(_sink.CursorPositionsSet);
+    }
+
+    [Fact]
+    public void MoveMouse_PastTheVirtualScreensEdge_StopsAtTheEdge()
+    {
+        _sink.VirtualScreen = new Rectangle(-1920, -200, 3840, 1280);
+        _sink.CursorPosition = new Point(1915, -195);
+
+        _input.MoveMouse(50, -50);
+
+        var move = Assert.Single(Assert.Single(_sink.Batches));
+        Assert.Equal(new Point(1919, -200), PixelFor(move, _sink.VirtualScreen));
+    }
+
+    [Fact]
+    public void MoveMouse_InputRejected_SetsTheCursorDirectly()
+    {
+        _sink.Accept = _ => 0;
+        _sink.CursorPosition = new Point(10, 10);
+
+        _input.MoveMouse(3, 4);
+
+        Assert.Equal([new Point(13, 14)], _sink.CursorPositionsSet);
+    }
+
+    [Theory]
+    [InlineData(0, 1920)]
+    [InlineData(-1920, 5760)]
+    [InlineData(-2560, 7680)]
+    [InlineData(100, 1366)]
+    public void ToAbsolute_EveryPixelMapsBackToItself(int left, int width)
+    {
+        var screen = new Rectangle(left, 0, width, 1);
+
+        for (int x = screen.Left; x < screen.Right; x++)
+        {
+            var (nx, _) = InputEmulator.ToAbsolute(new Point(x, 0), screen);
+            var move = new INPUT();
+            move.U.mi.dx = nx;
+
+            Assert.Equal(x, PixelFor(move, screen).X);
+        }
     }
 
     private static void AssertKey(INPUT input, ushort vk, bool up)

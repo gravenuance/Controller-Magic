@@ -37,91 +37,111 @@ namespace ControllerMagic
         public IntPtr dwExtraInfo;
     }
 
-    // Where synthesized input goes; returns how many events were inserted, as SendInput does.
-    internal interface IInputSink
+    // The desktop the synthesized input goes to.
+    internal interface IDesktopInput
     {
+        // Returns how many events were inserted, as SendInput does.
         uint Send(ReadOnlySpan<INPUT> inputs);
+
+        Point CursorPosition { get; }
+
+        Rectangle VirtualScreen { get; }
+
+        void SetCursorPosition(Point position);
     }
 
-    internal sealed class SendInputSink : IInputSink
+    internal sealed class Win32DesktopInput : IDesktopInput
     {
         private static readonly int InputSize = Marshal.SizeOf<INPUT>();
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern uint SendInput(uint nInputs, ref INPUT pInputs, int cbSize);
-
-        public uint Send(ReadOnlySpan<INPUT> inputs) =>
-            inputs.IsEmpty ? 0 : SendInput((uint)inputs.Length, ref MemoryMarshal.GetReference(inputs), InputSize);
-    }
-
-    internal sealed class InputEmulator
-    {
-        internal const uint INPUT_MOUSE = 0;
-        internal const uint INPUT_KEYBOARD = 1;
-        internal const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
-        internal const uint MOUSEEVENTF_LEFTUP = 0x0004;
-        internal const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
-        internal const uint MOUSEEVENTF_RIGHTUP = 0x0010;
-        internal const uint MOUSEEVENTF_WHEEL = 0x0800;
-        internal const uint MOUSEEVENTF_HWHEEL = 0x1000;
-        internal const uint KEYEVENTF_KEYUP = 0x0002;
-
-        private readonly IInputSink _sink;
-        private bool _leftIsDown;
-        private bool _sendFailing;
-
-        public InputEmulator(IInputSink sink)
-        {
-            _sink = sink;
-        }
-
-        public void MouseWheelVertical(int delta) => SendMouse(MOUSEEVENTF_WHEEL, unchecked((uint)delta));
-
-        public void MouseWheelHorizontal(int delta) => SendMouse(MOUSEEVENTF_HWHEEL, unchecked((uint)delta));
-
-        [DllImport("user32.dll")]
-        private static extern bool GetCursorPos(out POINT lpPoint);
-
-        [DllImport("user32.dll")]
-        private static extern bool SetCursorPos(int X, int Y);
-
-        [DllImport("user32.dll")]
-        private static extern int GetSystemMetrics(int nIndex);
 
         private const int SM_XVIRTUALSCREEN = 76;
         private const int SM_YVIRTUALSCREEN = 77;
         private const int SM_CXVIRTUALSCREEN = 78;
         private const int SM_CYVIRTUALSCREEN = 79;
 
-        [StructLayout(LayoutKind.Sequential)]
-        private struct POINT
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern uint SendInput(uint nInputs, ref INPUT pInputs, int cbSize);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetCursorPos(out Point lpPoint);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetCursorPos(int x, int y);
+
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int nIndex);
+
+        public uint Send(ReadOnlySpan<INPUT> inputs) =>
+            inputs.IsEmpty ? 0 : SendInput((uint)inputs.Length, ref MemoryMarshal.GetReference(inputs), InputSize);
+
+        public Point CursorPosition => GetCursorPos(out var point) ? point : Point.Empty;
+
+        public Rectangle VirtualScreen => new(
+            GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN));
+
+        public void SetCursorPosition(Point position) => SetCursorPos(position.X, position.Y);
+    }
+
+    internal sealed class InputEmulator
+    {
+        internal const uint INPUT_MOUSE = 0;
+        internal const uint INPUT_KEYBOARD = 1;
+        internal const uint MOUSEEVENTF_MOVE = 0x0001;
+        internal const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+        internal const uint MOUSEEVENTF_LEFTUP = 0x0004;
+        internal const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+        internal const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+        internal const uint MOUSEEVENTF_WHEEL = 0x0800;
+        internal const uint MOUSEEVENTF_HWHEEL = 0x1000;
+        internal const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
+        internal const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+        internal const uint KEYEVENTF_KEYUP = 0x0002;
+
+        private const int AbsoluteScale = 65536;
+
+        private readonly IDesktopInput _desktop;
+        private bool _leftIsDown;
+        private bool _sendFailing;
+
+        public InputEmulator(IDesktopInput desktop)
         {
-            public int X;
-            public int Y;
+            _desktop = desktop;
         }
 
-        public static void MoveMouse(int dx, int dy)
+        public void MouseWheelVertical(int delta) => SendMouse(MOUSEEVENTF_WHEEL, unchecked((uint)delta));
+
+        public void MouseWheelHorizontal(int delta) => SendMouse(MOUSEEVENTF_HWHEEL, unchecked((uint)delta));
+
+        // Sent as input, unlike SetCursorPos, so it keeps the display awake and resets idle timers.
+        // Absolute, because relative moves go through "Enhance pointer precision" acceleration on
+        // top of the stick's own curve. SetCursorPos stays as the fallback where UIPI drops the
+        // input (an elevated window in front), so the cursor still moves there as before.
+        public void MoveMouse(int dx, int dy)
         {
-            GetCursorPos(out var p);
+            var screen = _desktop.VirtualScreen;
+            if (screen.Width <= 0 || screen.Height <= 0)
+                return;
 
-            int targetX = p.X + dx;
-            int targetY = p.Y + dy;
+            var cursor = _desktop.CursorPosition;
+            var target = new Point(
+                Math.Clamp(cursor.X + dx, screen.Left, screen.Right - 1),
+                Math.Clamp(cursor.Y + dy, screen.Top, screen.Bottom - 1));
 
-            int virtualLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
-            int virtualTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
-            int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-            int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-
-            int virtualRight = virtualLeft + virtualWidth - 1;
-            int virtualBottom = virtualTop + virtualHeight - 1;
-
-            if (targetX < virtualLeft) targetX = virtualLeft;
-            if (targetY < virtualTop) targetY = virtualTop;
-            if (targetX > virtualRight) targetX = virtualRight;
-            if (targetY > virtualBottom) targetY = virtualBottom;
-
-            SetCursorPos(targetX, targetY);
+            var (x, y) = ToAbsolute(target, screen);
+            if (!SendMouse(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, dx: x, dy: y))
+                _desktop.SetCursorPosition(target);
         }
+
+        // Windows maps a normalised coordinate n to pixel floor(n * size / 65536); rounding up here
+        // lands on the exact pixel, so a 1 px step at slow stick speed is never rounded away.
+        internal static (int X, int Y) ToAbsolute(Point pixel, Rectangle screen) =>
+            (Normalise(pixel.X - screen.Left, screen.Width), Normalise(pixel.Y - screen.Top, screen.Height));
+
+        private static int Normalise(int offset, int size) =>
+            (int)((((long)offset * AbsoluteScale) + size - 1) / size);
 
         // Committed only once Windows accepts it: UIPI drops input aimed at an elevated window, and
         // the caller re-asserts the wanted state every tick, so a dropped press or release is retried.
@@ -173,18 +193,20 @@ namespace ControllerMagic
             Send(inputs);
         }
 
-        private bool SendMouse(uint flags, uint mouseData = 0)
+        private bool SendMouse(uint flags, uint mouseData = 0, int dx = 0, int dy = 0)
         {
             Span<INPUT> inputs = stackalloc INPUT[1];
-            inputs[0] = Mouse(flags, mouseData);
+            inputs[0] = Mouse(flags, mouseData, dx, dy);
             return Send(inputs);
         }
 
-        private static INPUT Mouse(uint flags, uint mouseData = 0)
+        private static INPUT Mouse(uint flags, uint mouseData = 0, int dx = 0, int dy = 0)
         {
             var input = new INPUT { type = INPUT_MOUSE };
             input.U.mi.dwFlags = flags;
             input.U.mi.mouseData = mouseData;
+            input.U.mi.dx = dx;
+            input.U.mi.dy = dy;
             return input;
         }
 
@@ -199,7 +221,7 @@ namespace ControllerMagic
         // Logged once per run of failures: a blocked foreground window rejects every tick's input.
         private bool Send(ReadOnlySpan<INPUT> inputs)
         {
-            uint sent = _sink.Send(inputs);
+            uint sent = _desktop.Send(inputs);
             if (sent == inputs.Length)
             {
                 _sendFailing = false;

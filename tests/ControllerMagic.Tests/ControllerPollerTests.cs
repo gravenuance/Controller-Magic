@@ -5,7 +5,7 @@ namespace ControllerMagic.Tests;
 
 public class ControllerPollerTests
 {
-    private static ControllerPoller NewPoller() => new(new InputEmulator(new RecordingInputSink()));
+    private static ControllerPoller NewPoller() => new(new InputEmulator(new FakeDesktopInput()));
 
     [Fact]
     public void ComputeHoldRamp_RampSecondsZeroOrNegative_AlwaysFullSpeed()

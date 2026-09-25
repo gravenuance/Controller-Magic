@@ -240,7 +240,7 @@ namespace ControllerMagic
         private readonly GamepadPassthroughController _passthrough;
 
         public ControllerPoller()
-            : this(new InputEmulator(new SendInputSink()))
+            : this(new InputEmulator(new Win32DesktopInput()))
         {
         }
 
@@ -737,7 +737,7 @@ namespace ControllerMagic
             _dyRemainder = exactDy - dy;
 
             if (dx != 0 || dy != 0)
-                InputEmulator.MoveMouse(dx, dy);
+                _input.MoveMouse(dx, dy);
 
             HandleScroll(pad.RightThumbY, pad.RightThumbX);
         }
@@ -755,7 +755,7 @@ namespace ControllerMagic
             _touchpadHoldsLeft = touch.HoldLeft;
 
             if (touch.Dx != 0 || touch.Dy != 0)
-                InputEmulator.MoveMouse(touch.Dx, touch.Dy);
+                _input.MoveMouse(touch.Dx, touch.Dy);
 
             switch (touch.Click)
             {
