@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Security.Principal;
+using System.Text;
 using Microsoft.Win32;
 
 namespace ControllerMagic
@@ -7,16 +9,13 @@ namespace ControllerMagic
     // Starts the app at logon. Prefers a Task Scheduler logon trigger over the classic
     // HKCU...\Run key, since Windows deliberately staggers Run-key apps by several seconds after
     // logon to keep Explorer responsive first, while a scheduled task fires directly off the
-    // logon event. Some locked-down (e.g. Group Policy managed / Enterprise) machines reject
-    // unelevated task creation outright; when the user explicitly flips the Settings toggle we
-    // retry once with a UAC prompt (many such policies only block the unelevated path), and if
-    // that's declined or still fails we fall back to the Run key instead of leaving the toggle
-    // silently non-functional.
+    // logon event. The task is registered from XML with a trigger for the current user only, which
+    // a standard user may create; if that still fails (e.g. Group Policy blocks it) the Run key is
+    // used instead of leaving the toggle silently non-functional.
     //
-    // Every schtasks.exe invocation here is async: it's a subprocess spawn plus a wait, and the
-    // elevated variant can block for as long as the user takes to respond to (or ignore) a UAC
-    // prompt - none of that belongs on the UI thread. The registry reads/writes stay synchronous;
-    // they're near-instant local calls, not worth the ceremony.
+    // Every schtasks.exe invocation here is async: it's a subprocess spawn plus a wait - none of
+    // that belongs on the UI thread. The registry reads/writes stay synchronous; they're
+    // near-instant local calls, not worth the ceremony.
     internal static class StartupHelper
     {
         private const string TaskName = "ControllerMagic";
@@ -26,10 +25,12 @@ namespace ControllerMagic
         // Tags launches that came from the task/Run-key so Program.cs can tell an automatic
         // startup attempt apart from the user manually double-clicking the exe, and skip the
         // "already running" dialog for the former.
-        private const string StartupArg = " --startup";
+        private const string StartupArg = " " + StartupTaskDefinition.StartupArgument;
+
+        private readonly record struct SchtasksResult(int ExitCode, string Output);
 
         public static async Task<bool> IsEnabledAsync(CancellationToken ct = default) =>
-            await RunSchtasksAsync(ct, "/Query", "/TN", TaskName).ConfigureAwait(false) == 0 || GetRunKeyValue() != null;
+            (await RunSchtasksAsync(ct, "/Query", "/TN", TaskName).ConfigureAwait(false)).ExitCode == 0 || GetRunKeyValue() != null;
 
         public static Task SetEnabledAsync(bool enabled, CancellationToken ct = default) =>
             enabled ? EnableAsync(ct) : DisableAsync(ct);
@@ -38,34 +39,49 @@ namespace ControllerMagic
         {
             string exe = Application.ExecutablePath;
 
-            if (await TryCreateTaskAsync(exe, allowElevation: true, ct).ConfigureAwait(false))
+            if (await TryCreateTaskAsync(exe, ct).ConfigureAwait(false))
                 RemoveRunKeyValue();
             else
                 SetRunKeyValue(exe);
         }
 
+        // A task an older version registered elevated can only be deleted elevated; the delete's
+        // arguments are fixed, so the elevated schtasks reads nothing a user could have altered.
         private static async Task DisableAsync(CancellationToken ct)
         {
-            if (await RunSchtasksAsync(ct, "/Query", "/TN", TaskName).ConfigureAwait(false) == 0)
+            if ((await RunSchtasksAsync(ct, "/Query", "/TN", TaskName).ConfigureAwait(false)).ExitCode == 0)
             {
-                if (await RunSchtasksAsync(ct, "/Delete", "/TN", TaskName, "/F").ConfigureAwait(false) != 0)
+                if ((await RunSchtasksAsync(ct, "/Delete", "/TN", TaskName, "/F").ConfigureAwait(false)).ExitCode != 0)
                     await RunSchtasksElevatedAsync(new[] { "/Delete", "/TN", TaskName, "/F" }, ct).ConfigureAwait(false);
             }
 
             RemoveRunKeyValue();
         }
 
-        // One-time upgrade path for users who had startup enabled via the old Run-key-only
-        // version. Runs silently at app launch, so it never prompts for elevation - it only
-        // removes the Run key once the scheduled task actually took unelevated; on machines that
-        // block that, the existing Run key is left alone so startup keeps working.
+        // Runs silently at every launch, so it never prompts for elevation. Moves users of the old
+        // Run-key-only version onto the task, and re-registers a task (or rewrites a Run key)
+        // that no longer starts this exe - e.g. after the exe was moved - so "on" stays true.
         public static async Task EnsureMigratedAsync(CancellationToken ct = default)
         {
-            string? stored = GetRunKeyValue();
-            if (stored == null) return;
+            string exe = Application.ExecutablePath;
 
-            if (await TryCreateTaskAsync(ExtractExePath(stored), allowElevation: false, ct).ConfigureAwait(false))
-                RemoveRunKeyValue();
+            string? stored = GetRunKeyValue();
+            if (stored != null)
+            {
+                if (await TryCreateTaskAsync(exe, ct).ConfigureAwait(false))
+                    RemoveRunKeyValue();
+                else if (!StartupTaskDefinition.IsSameExecutable(ExtractExePath(stored), exe))
+                    SetRunKeyValue(exe);
+                return;
+            }
+
+            var query = await RunSchtasksAsync(ct, "/Query", "/TN", TaskName, "/XML").ConfigureAwait(false);
+            if (query.ExitCode != 0 || !StartupTaskDefinition.NeedsRefresh(query.Output, exe))
+                return;
+
+            AppLog.Default.Info("StartupHelper: the startup task doesn't start this exe for this user; re-registering it.");
+            if (!await TryCreateTaskAsync(exe, ct).ConfigureAwait(false))
+                AppLog.Default.Warning("StartupHelper: could not re-register the startup task; leaving the existing one.");
         }
 
         private static string BuildCommand(string exe) => $"\"{exe}\"{StartupArg}";
@@ -80,28 +96,67 @@ namespace ControllerMagic
             return value.Trim('"');
         }
 
-        private static async Task<bool> TryCreateTaskAsync(string exe, bool allowElevation, CancellationToken ct)
+        // No elevated retry: an elevated schtasks reading an XML file from a user-writable temp
+        // folder could be fed a swapped file that registers something to run with admin rights.
+        private static async Task<bool> TryCreateTaskAsync(string exe, CancellationToken ct)
         {
-            string[] createArgs =
+            string? userSid;
+            using (var identity = WindowsIdentity.GetCurrent())
+                userSid = identity.User?.Value;
+            if (userSid == null)
             {
-                "/Create", "/TN", TaskName,
-                "/TR", BuildCommand(exe),
-                "/SC", "ONLOGON",
-                "/RL", "LIMITED",
-                "/F"
-            };
-
-            if (await RunSchtasksAsync(ct, createArgs).ConfigureAwait(false) == 0)
-                return true;
-
-            if (!allowElevation)
-            {
-                AppLog.Default.Warning("StartupHelper: unelevated scheduled task creation failed; skipping the elevation prompt during background migration.");
+                AppLog.Default.Warning("StartupHelper: current user has no SID; can't register the startup task.");
                 return false;
             }
 
-            AppLog.Default.Warning("StartupHelper: unelevated scheduled task creation failed; retrying with a UAC prompt.");
-            return await RunSchtasksElevatedAsync(createArgs, ct).ConfigureAwait(false);
+            string? xmlPath = await WriteTaskXmlAsync(StartupTaskDefinition.BuildXml(exe, userSid), ct).ConfigureAwait(false);
+            if (xmlPath == null)
+                return false;
+
+            try
+            {
+                if ((await RunSchtasksAsync(ct, "/Create", "/TN", TaskName, "/XML", xmlPath, "/F").ConfigureAwait(false)).ExitCode == 0)
+                    return true;
+
+                AppLog.Default.Warning("StartupHelper: scheduled task creation failed; using the Run key instead.");
+                return false;
+            }
+            finally
+            {
+                TryDelete(xmlPath);
+            }
+        }
+
+        // Written under a temporary name and renamed, so schtasks never reads a half-written file.
+        // UTF-16 with a BOM is the encoding Task Scheduler itself exports and reads most reliably.
+        private static async Task<string?> WriteTaskXmlAsync(string xml, CancellationToken ct)
+        {
+            string finalPath = Path.Combine(Path.GetTempPath(), $"ControllerMagic-startup-{Guid.NewGuid():N}.xml");
+            string tempPath = finalPath + ".tmp";
+            try
+            {
+                await File.WriteAllTextAsync(tempPath, xml, Encoding.Unicode, ct).ConfigureAwait(false);
+                File.Move(tempPath, finalPath);
+                return finalPath;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                AppLog.Default.Warning("StartupHelper: could not write the startup task definition", ex);
+                TryDelete(tempPath);
+                return null;
+            }
+        }
+
+        private static void TryDelete(string path)
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                AppLog.Default.Warning($"StartupHelper: failed to remove {path}", ex);
+            }
         }
 
         private static string? GetRunKeyValue()
@@ -145,7 +200,9 @@ namespace ControllerMagic
             }
         }
 
-        private static async Task<int> RunSchtasksAsync(CancellationToken ct, params string[] args)
+        // Both pipes are drained while waiting: a redirected stream nobody reads blocks schtasks
+        // once its buffer fills, which /Query /XML's output can do.
+        private static async Task<SchtasksResult> RunSchtasksAsync(CancellationToken ct, params string[] args)
         {
             var psi = new ProcessStartInfo("schtasks.exe")
             {
@@ -160,20 +217,22 @@ namespace ControllerMagic
             try
             {
                 using var proc = Process.Start(psi);
-                if (proc == null) return -1;
-                await proc.WaitForExitAsync(ct).ConfigureAwait(false);
-                return proc.ExitCode;
+                if (proc == null) return new SchtasksResult(-1, string.Empty);
+
+                var output = proc.StandardOutput.ReadToEndAsync(ct);
+                var error = proc.StandardError.ReadToEndAsync(ct);
+                await Task.WhenAll(output, error, proc.WaitForExitAsync(ct)).ConfigureAwait(false);
+                return new SchtasksResult(proc.ExitCode, await output.ConfigureAwait(false));
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
             {
                 AppLog.Default.Warning("StartupHelper: schtasks invocation failed", ex);
-                return -1;
+                return new SchtasksResult(-1, string.Empty);
             }
         }
 
-        // Retries an operation with a UAC consent prompt. Some locked-down (Group Policy managed)
-        // machines only block *unelevated* task operations; an elevated token can often still
-        // succeed. If the user declines the prompt, this just fails closed.
+        // Retries an operation with a UAC consent prompt. If the user declines the prompt, this
+        // just fails closed.
         private static async Task<bool> RunSchtasksElevatedAsync(string[] args, CancellationToken ct)
         {
             var psi = new ProcessStartInfo("schtasks.exe")

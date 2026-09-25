@@ -65,6 +65,10 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - A full disk or locked file while downloading the HidHide drivers was reported as "No network".
   It now says the drivers couldn't be saved. A download that stalls now gives up after a few
   minutes instead of waiting forever, and an unexpectedly large one is refused.
+- "Start with Windows" registered a task for every user who signs in, which usually needed an
+  admin prompt. It also didn't start on battery power, stopped when the laptop was unplugged, and
+  was ended after three days. The task now covers only your account, never needs a prompt, and
+  keeps running. After the app is moved, the task is pointed at the new location on next launch.
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the

@@ -62,17 +62,15 @@ namespace ControllerMagic
             _controllerPoller.Start();
 
             // Startup-task housekeeping (migrating a legacy Run-key install, defaulting startup to
-            // on for a first-ever run) spawns schtasks.exe and can briefly block on a UAC prompt -
-            // run it in the background instead of delaying the tray icon's appearance on it.
+            // on for a first-ever run) spawns schtasks.exe - run it in the background instead of
+            // delaying the tray icon's appearance on it.
             _ = InitializeStartupAsync();
         }
 
-        // Runs EnsureMigratedAsync every launch (a no-op once there's no legacy Run-key value left
-        // to migrate), then - once, ever, the first time the app starts - defaults startup to on,
-        // no prompt. SetEnabledAsync already handles the unelevated task attempt, the UAC-elevated
-        // retry if that's denied, and the Run-key fallback if elevation is declined, so this can
-        // still surface a UAC prompt on locked-down machines; it just isn't an app-level dialog
-        // asking permission first.
+        // Runs EnsureMigratedAsync every launch (migrates a legacy Run key and re-points a stale
+        // startup task at this exe), then - once, ever, the first time the app starts - defaults
+        // startup to on, no prompt. SetEnabledAsync falls back to the Run key if the task can't be
+        // registered, so this never needs elevation.
         private static async Task InitializeStartupAsync()
         {
             await StartupHelper.EnsureMigratedAsync().ConfigureAwait(false);
