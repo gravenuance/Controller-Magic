@@ -24,7 +24,7 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore "Controller Magic.slnx"
+        run: dotnet restore "Controller Magic.slnx" --locked-mode
 
       # Release so TreatWarningsAsErrors (Directory.Build.props) and the full AnalysisLevel=
       # latest-all analyzer set actually fire - matching the local pre-push check exactly.

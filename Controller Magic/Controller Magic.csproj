@@ -11,6 +11,8 @@
     <StartupObject>ControllerMagic.Program</StartupObject>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- The publish profile's RID, declared here so the lock file covers the published build too. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
 
     <!-- Analyzer level and rule-suppression rationale live in the repo-root Directory.Build.props
          and .editorconfig, so every project here inherits the same settings. -->

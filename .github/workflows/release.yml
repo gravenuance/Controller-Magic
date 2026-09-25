@@ -30,7 +30,7 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore "Controller Magic.slnx"
+        run: dotnet restore "Controller Magic.slnx" --locked-mode
 
       - name: Test (Release)
         run: dotnet test "Controller Magic.slnx" -c Release
