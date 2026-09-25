@@ -257,6 +257,7 @@ namespace ControllerMagic
         }
 
         private readonly InputEmulator _input;
+        private readonly XInputPadReader _xinput = new(TimeProvider.System);
 
         private const int SlowScrollIntervalMs = 200;
         private const int FastScrollIntervalMs = 20;
@@ -546,14 +547,14 @@ namespace ControllerMagic
             sdlPadReader.PumpEvents();
             sdlPadReader.SetPlayerLights(ControllerLights.PlayerLightsFor(sdlPadReader.Battery));
 
-            PadSource source = XInputPadReader.TryReadAny(out var pad, _passthrough.VirtualPadXInputSlots) ? PadSource.XInput
+            PadSource source = _xinput.TryReadAny(out var pad, _passthrough.VirtualPadXInputSlots) ? PadSource.XInput
                 : sdlPadReader.TryGetLatest(out pad) ? PadSource.Sdl
                 : PadSource.None;
             bool gotPad = source != PadSource.None;
 
             IsControllerConnected = gotPad;
             UpdateStatusText(source);
-            _connection.Observe(source, XInputPadReader.LastSlot, sdlPadReader.CurrentDeviceIdentity, sdlPadReader.ConnectionSerial);
+            _connection.Observe(source, _xinput.LastSlot, sdlPadReader.CurrentDeviceIdentity, sdlPadReader.ConnectionSerial);
 
             if (gotPad)
             {
@@ -654,7 +655,7 @@ namespace ControllerMagic
 
         private void UpdateStatusText(PadSource source)
         {
-            int slot = source == PadSource.XInput ? XInputPadReader.LastSlot : -1;
+            int slot = source == PadSource.XInput ? _xinput.LastSlot : -1;
 
             if (source == _lastStatusSource && slot == _lastStatusSlot)
                 return;

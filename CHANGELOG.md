@@ -8,6 +8,10 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Changed
+- Less CPU use when no Xbox controller is plugged in: empty controller slots are checked once a
+  second instead of 125 times. A newly plugged Xbox controller is picked up within a second.
+
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen
   virtual pad. The controller is now handed back to the game while it's in the foreground.

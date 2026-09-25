@@ -6,30 +6,52 @@ namespace ControllerMagic;
 // Bluetooth connection, since it rides the same Xbox peripheral driver stack the controller uses
 // either way. Unlike Windows.Gaming.Input, it isn't gated by which app currently has focus, which
 // matters for a background tray utility like this one.
-internal static class XInputPadReader
+internal sealed class XInputPadReader
 {
+    internal delegate bool SlotReader(int userIndex, out PadState pad);
+
+    private const int SlotCount = 4;
+
+    // XInputGetState on an empty slot is slow (it searches for a device), and Microsoft advises
+    // against polling empty slots every frame; a newly plugged pad still shows up within this.
+    private static readonly TimeSpan EmptySlotProbeInterval = TimeSpan.FromSeconds(1);
+
+    private readonly SlotReader _readSlot;
+    private readonly TimeProvider _clock;
+    private readonly bool[] _slotEmpty = new bool[SlotCount];
+    private readonly long[] _slotFoundEmptyAt = new long[SlotCount];
+
     // XInput exposes 4 fixed slots; a controller can land in any of them depending on plug-in
     // order, so hardcoding slot 0 misses anything not lucky enough to claim it first. Sticking
     // with the last slot that worked avoids hopping between controllers if more than one is
     // connected, only rescanning once that slot actually goes quiet.
-    private static int _lastSlot;
+    private int _lastSlot;
+
+    public XInputPadReader(TimeProvider clock)
+        : this(TryRead, clock)
+    {
+    }
+
+    internal XInputPadReader(SlotReader readSlot, TimeProvider clock)
+    {
+        _readSlot = readSlot;
+        _clock = clock;
+    }
 
     // Slot the last successful TryReadAny() call landed on - only meaningful right after a call
     // that returned true. Exists so the UI can show which XInput slot the controller claimed.
-    public static int LastSlot => _lastSlot;
-
-    private const int SlotCount = 4;
+    public int LastSlot => _lastSlot;
 
     // excludedSlots is a bit per XInput user index that may hold this process's own ViGEm virtual
     // pad. XInput's public API exposes no device identity at all - just a slot number - so
     // without this, a virtual Xbox 360 controller this app creates for itself is
     // indistinguishable from a real one, and slot-scanning can end up reading back its own
     // (deliberately neutered) output as if it were fresh input instead of the real controller.
-    public static bool TryReadAny(out PadState pad, int excludedSlots = 0)
+    public bool TryReadAny(out PadState pad, int excludedSlots = 0)
     {
         pad = default;
 
-        if (!IsExcluded(_lastSlot, excludedSlots) && TryRead(_lastSlot, out pad))
+        if (!IsExcluded(_lastSlot, excludedSlots) && TryProbe(_lastSlot, out pad))
             return true;
 
         for (int i = 0; i < SlotCount; i++)
@@ -37,7 +59,7 @@ internal static class XInputPadReader
             if (i == _lastSlot || IsExcluded(i, excludedSlots))
                 continue;
 
-            if (TryRead(i, out pad))
+            if (TryProbe(i, out pad))
             {
                 _lastSlot = i;
                 return true;
@@ -47,7 +69,7 @@ internal static class XInputPadReader
         return false;
     }
 
-    // A bit per user index with a controller in it right now.
+    // Every slot, unthrottled: a one-off snapshot, not part of the per-tick read.
     public static int ConnectedSlots()
     {
         int slots = 0;
@@ -61,6 +83,23 @@ internal static class XInputPadReader
     }
 
     private static bool IsExcluded(int slot, int excludedSlots) => (excludedSlots & (1 << slot)) != 0;
+
+    private bool TryProbe(int slot, out PadState pad)
+    {
+        pad = default;
+        if (_slotEmpty[slot] && _clock.GetElapsedTime(_slotFoundEmptyAt[slot]) < EmptySlotProbeInterval)
+            return false;
+
+        if (_readSlot(slot, out pad))
+        {
+            _slotEmpty[slot] = false;
+            return true;
+        }
+
+        _slotEmpty[slot] = true;
+        _slotFoundEmptyAt[slot] = _clock.GetTimestamp();
+        return false;
+    }
 
     public static bool TryRead(int userIndex, out PadState pad)
     {
