@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using Microsoft.Win32;
@@ -188,19 +187,12 @@ namespace ControllerMagic
             ResourceUsageMonitor.LogSnapshot("after-settings-close");
         }
 
+        // Program relaunches once shutdown has finished and the single-instance lock is free.
+        public bool RestartRequested { get; private set; }
+
         private void OnRestartClick(object? sender, EventArgs e)
         {
-            var exe = Application.ExecutablePath;
-
-            try
-            {
-                Process.Start(exe);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Default.Warning($"Failed to relaunch {exe} for restart", ex);
-            }
-
+            RestartRequested = true;
             ExitThread();
         }
 

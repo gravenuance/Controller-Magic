@@ -81,6 +81,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   run and keeps going; a real crash is still reported once.
 - Signing out or shutting down with "Use HidHide" on could leave the controller hidden until the
   app next started. The app now unhides it and removes the virtual pad before Windows closes it.
+- Restart from the tray menu usually just closed the app: the new copy started while the old one
+  was still closing and took it for a second instance. It now starts once the old one is done.
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the

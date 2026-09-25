@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 // Every P/Invoke this project declares itself (ControllerPoller, InputEmulator,
@@ -27,10 +29,24 @@ namespace ControllerMagic
             // A second launch (double-clicked by hand, triggered by the startup task, whatever)
             // just quietly exits - the app is already running, and a "did you know" dialog isn't
             // worth interrupting whatever the user's doing for.
-            using var singleInstance = new Mutex(true, SingleInstanceMutexName, out bool createdNew);
-            if (!createdNew)
-                return 0;
+            bool restart;
+            using (var instance = SingleInstanceLock.TryAcquire(SingleInstanceMutexName))
+            {
+                if (instance is null)
+                    return 0;
 
+                restart = RunTray();
+            }
+
+            // Only once the lock is released, or the new copy exits as a second instance.
+            if (restart)
+                Relaunch();
+            return 0;
+        }
+
+        // Returns whether the user asked to restart.
+        private static bool RunTray()
+        {
             var reporter = new UnhandledExceptionReporter(AppLog.Default, TimeProvider.System, ShowExceptionNotice);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) => reporter.ReportSurvivable(e.Exception);
@@ -62,7 +78,20 @@ namespace ControllerMagic
             var context = new TrayApplicationContext();
 #pragma warning restore CA2000
             Application.Run(context);
-            return 0;
+            return context.RestartRequested;
+        }
+
+        private static void Relaunch()
+        {
+            string exe = Application.ExecutablePath;
+            try
+            {
+                Process.Start(exe)?.Dispose();
+            }
+            catch (Win32Exception ex)
+            {
+                AppLog.Default.Warning($"Failed to relaunch {exe} for restart", ex);
+            }
         }
 
         // Background threads (e.g. the controller poll loop) crash the whole process with no way
