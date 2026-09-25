@@ -94,10 +94,14 @@ internal sealed class Sdl2PadReader : IDisposable
         SDL.SDL_SetHint(SDL.SDL_HINT_JOYSTICK_HIDAPI_PS5_PLAYER_LED, "0");
 
         _initialized = SDL.SDL_Init(SDL.SDL_INIT_GAMECONTROLLER) == 0;
+        if (!_initialized)
+        {
+            AppLog.Default.Error($"Sdl2PadReader: SDL_Init failed, so only Xbox (XInput) controllers will work: {SDL.SDL_GetError()}");
+            return;
+        }
 
         // The accelerometer runs only as a per-report liveness stamp; its events would just flood the queue.
-        if (_initialized)
-            _ = SDL.SDL_EventState(SDL.SDL_EventType.SDL_CONTROLLERSENSORUPDATE, SDL.SDL_IGNORE);
+        _ = SDL.SDL_EventState(SDL.SDL_EventType.SDL_CONTROLLERSENSORUPDATE, SDL.SDL_IGNORE);
     }
 
     public bool TryGetLatest(out PadState state)
@@ -151,6 +155,9 @@ internal sealed class Sdl2PadReader : IDisposable
     // _controller back to IntPtr.Zero and gave this a fresh chance to run.
     public void PumpEvents()
     {
+        if (!_initialized)
+            return;
+
         while (SDL.SDL_PollEvent(out var e) != 0)
         {
             if (e.type == SDL.SDL_EventType.SDL_CONTROLLERDEVICEREMOVED && e.cdevice.which == _controllerInstanceId)

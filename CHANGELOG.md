@@ -37,6 +37,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   release of the left button was lost for good, leaving it stuck up or down. It's now retried.
 - Shift+key and Ctrl+click are sent in one piece, so other input can no longer land in between
   with Shift or Ctrl still held.
+- If SDL failed to start, PlayStation, Switch and other non-Xbox controllers silently did nothing.
+  The reason is now written to the log.
 
 ## [1.8.0] - 2026-09-24
 
