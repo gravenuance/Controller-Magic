@@ -13,6 +13,11 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- The publish profile's RID, declared here so the lock file covers the published build too. -->
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <!-- Only the shipped app is locked: the test project's lock would also list this project's
+         packages, and Dependabot updates for app-only packages leave it stale. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- GitHub Actions sets CI=true; locking there also covers dotnet test's implicit restore. -->
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
 
     <!-- Analyzer level and rule-suppression rationale live in the repo-root Directory.Build.props
          and .editorconfig, so every project here inherits the same settings. -->
