@@ -36,6 +36,11 @@ internal sealed class VigemBridge : IVirtualPad
     private int _slotsInUseBeforeConnect;
     private int? _userIndex;
     private DateTimeOffset _nextUserIndexQueryUtc;
+    // Null until the current connection's first report, so a new connection always gets one.
+    private Report? _lastSent;
+
+    private readonly record struct Report(
+        ushort Buttons, short LeftThumbX, short LeftThumbY, short RightThumbX, short RightThumbY, byte LeftTrigger, byte RightTrigger);
 
     public VigemBridge()
         : this(() => new ViGEmClient(), client => ((ViGEmClient)client).CreateXbox360Controller(),
@@ -130,6 +135,7 @@ internal sealed class VigemBridge : IVirtualPad
             _slotsInUseBeforeConnect = slotsInUseBeforeConnect;
             _userIndex = null;
             _nextUserIndexQueryUtc = DateTimeOffset.MinValue;
+            _lastSent = null;
         }
 
         return true;
@@ -147,18 +153,27 @@ internal sealed class VigemBridge : IVirtualPad
             if (controller == null)
                 return;
 
+            var report = new Report(
+                VirtualPadReportMapper.MapButtons(pad.Buttons, includeStickAndDpad),
+                includeStickAndDpad ? pad.LeftThumbX : (short)0,
+                includeStickAndDpad ? pad.LeftThumbY : (short)0,
+                pad.RightThumbX, pad.RightThumbY, pad.LeftTrigger, pad.RightTrigger);
+
+            // The target keeps its last report, so an unchanged one would only cost an IOCTL.
+            if (report == _lastSent)
+                return;
+
             try
             {
-                foreach (var (button, pressed) in VirtualPadReportMapper.MapButtons(pad.Buttons, includeStickAndDpad))
-                    controller.SetButtonState(button, pressed);
-
-                controller.SetAxisValue(Xbox360Axis.LeftThumbX, includeStickAndDpad ? pad.LeftThumbX : (short)0);
-                controller.SetAxisValue(Xbox360Axis.LeftThumbY, includeStickAndDpad ? pad.LeftThumbY : (short)0);
-                controller.SetAxisValue(Xbox360Axis.RightThumbX, pad.RightThumbX);
-                controller.SetAxisValue(Xbox360Axis.RightThumbY, pad.RightThumbY);
-                controller.SetSliderValue(Xbox360Slider.LeftTrigger, pad.LeftTrigger);
-                controller.SetSliderValue(Xbox360Slider.RightTrigger, pad.RightTrigger);
+                controller.SetButtonsFull(report.Buttons);
+                controller.SetAxisValue(Xbox360Axis.LeftThumbX, report.LeftThumbX);
+                controller.SetAxisValue(Xbox360Axis.LeftThumbY, report.LeftThumbY);
+                controller.SetAxisValue(Xbox360Axis.RightThumbX, report.RightThumbX);
+                controller.SetAxisValue(Xbox360Axis.RightThumbY, report.RightThumbY);
+                controller.SetSliderValue(Xbox360Slider.LeftTrigger, report.LeftTrigger);
+                controller.SetSliderValue(Xbox360Slider.RightTrigger, report.RightTrigger);
                 controller.SubmitReport();
+                _lastSent = report;
                 return;
             }
             catch (Exception ex)
@@ -183,6 +198,7 @@ internal sealed class VigemBridge : IVirtualPad
             controller = _controller;
             _client = null;
             _controller = null;
+            _lastSent = null;
         }
 
         Release(controller, client, wasConnected: controller != null);

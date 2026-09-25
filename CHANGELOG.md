@@ -16,6 +16,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - With no controller connected, the app checks for one 10 times a second instead of 125. It no
   longer raises Windows' timer resolution at all, which lets the PC save more power, and the
   cursor keeps a steadier pace on Windows 11 when the app has no visible window.
+- With "Use HidHide" on, the virtual Xbox pad is only updated when the controller's state changes
+  instead of 125 times a second.
 
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen

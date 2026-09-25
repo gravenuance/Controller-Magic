@@ -6,12 +6,21 @@ namespace ControllerMagic.Tests;
 
 public class VirtualPadReportMapperTests
 {
-    [Fact]
-    public void MapButtons_NoButtonsPressed_EveryEntryIsUnpressed()
-    {
-        var mapped = VirtualPadReportMapper.MapButtons(PadButtons.None);
+    private static readonly Xbox360Button[] AllButtons =
+    [
+        Xbox360Button.A, Xbox360Button.B, Xbox360Button.X, Xbox360Button.Y,
+        Xbox360Button.LeftShoulder, Xbox360Button.RightShoulder, Xbox360Button.Back, Xbox360Button.Start,
+        Xbox360Button.LeftThumb, Xbox360Button.RightThumb, Xbox360Button.Guide,
+        Xbox360Button.Up, Xbox360Button.Down, Xbox360Button.Left, Xbox360Button.Right,
+    ];
 
-        Assert.All(mapped, entry => Assert.False(entry.Pressed));
+    private static string[] PressedNames(ushort mask) =>
+        AllButtons.Where(b => (mask & b.Value) != 0).Select(b => b.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+
+    [Fact]
+    public void MapButtons_NoButtonsPressed_NothingIsPressed()
+    {
+        Assert.Equal(0, VirtualPadReportMapper.MapButtons(PadButtons.None));
     }
 
     // PadButtons is internal, and a public [Theory] method can't expose an internal type in its
@@ -34,55 +43,42 @@ public class VirtualPadReportMapperTests
     [InlineData((int)PadButtons.DPadRight, "Right")]
     public void MapButtons_SingleFlagSet_OnlyTheCorrespondingXbox360ButtonIsPressed(int flagValue, string expectedButtonName)
     {
-        var mapped = VirtualPadReportMapper.MapButtons((PadButtons)flagValue);
+        ushort mask = VirtualPadReportMapper.MapButtons((PadButtons)flagValue);
 
-        var pressed = mapped.Where(m => m.Pressed).ToList();
-        Assert.Single(pressed);
-        Assert.Equal(expectedButtonName, pressed[0].Button.ToString());
+        Assert.Equal([expectedButtonName], PressedNames(mask));
     }
-
-    private static readonly string[] ExpectedMultiFlagButtonNames = { "A", "Start", "Up" };
 
     [Fact]
     public void MapButtons_MultipleFlagsSet_AllCorrespondingButtonsArePressed()
     {
-        var mapped = VirtualPadReportMapper.MapButtons(PadButtons.A | PadButtons.DPadUp | PadButtons.Start);
+        ushort mask = VirtualPadReportMapper.MapButtons(PadButtons.A | PadButtons.DPadUp | PadButtons.Start);
 
-        var pressedNames = mapped.Where(m => m.Pressed).Select(m => m.Button.ToString()).OrderBy(n => n);
-        Assert.Equal(ExpectedMultiFlagButtonNames, pressedNames);
+        Assert.Equal(["A", "Start", "Up"], PressedNames(mask));
     }
 
     [Fact]
-    public void MapButtons_NeverProducesAGuideEntry()
+    public void MapButtons_NeverPressesGuide()
     {
         // PadButtons has no Guide bit at all, so no combination of flags can ever reach one -
         // this documents that the omission (not a runtime filter) is what suppresses Guide.
-        var mapped = VirtualPadReportMapper.MapButtons((PadButtons)(-1));
+        ushort mask = VirtualPadReportMapper.MapButtons((PadButtons)(-1));
 
-        Assert.DoesNotContain(mapped, m => m.Button == Xbox360Button.Guide);
+        Assert.Equal(0, mask & Xbox360Button.Guide.Value);
     }
-
-    private static readonly Xbox360Button[] DpadButtons =
-        { Xbox360Button.Up, Xbox360Button.Down, Xbox360Button.Left, Xbox360Button.Right };
 
     [Fact]
     public void MapButtons_IncludeDpadFalse_DpadButtonsStayUnpressedEvenWhenFlagsAreSet()
     {
         var allDpad = PadButtons.DPadUp | PadButtons.DPadDown | PadButtons.DPadLeft | PadButtons.DPadRight;
 
-        var mapped = VirtualPadReportMapper.MapButtons(allDpad, includeDpad: false);
-
-        Assert.All(mapped.Where(m => DpadButtons.Contains(m.Button)), entry => Assert.False(entry.Pressed));
+        Assert.Equal(0, VirtualPadReportMapper.MapButtons(allDpad, includeDpad: false));
     }
-
-    private static readonly string[] ExpectedNonDpadButtonNames = { "A", "Start" };
 
     [Fact]
     public void MapButtons_IncludeDpadFalse_NonDpadButtonsAreUnaffected()
     {
-        var mapped = VirtualPadReportMapper.MapButtons(PadButtons.A | PadButtons.Start, includeDpad: false);
+        ushort mask = VirtualPadReportMapper.MapButtons(PadButtons.A | PadButtons.Start, includeDpad: false);
 
-        var pressedNames = mapped.Where(m => m.Pressed).Select(m => m.Button.ToString()).OrderBy(n => n);
-        Assert.Equal(ExpectedNonDpadButtonNames, pressedNames);
+        Assert.Equal(["A", "Start"], PressedNames(mask));
     }
 }

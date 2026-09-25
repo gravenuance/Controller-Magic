@@ -69,6 +69,89 @@ public class VigemBridgeTests
     }
 
     [Fact]
+    public void SubmitReport_SendsTheButtonsAsTheReportsBitMask()
+    {
+        using var controller = new FakeXbox360Controller(_events);
+        using var bridge = CreateBridge(controller);
+        bridge.TryConnect();
+
+        bridge.SubmitReport(new PadState { Buttons = PadButtons.A | PadButtons.Start });
+
+        Assert.Equal(Xbox360Button.A.Value | Xbox360Button.Start.Value, controller.SubmittedButtons);
+    }
+
+    [Fact]
+    public void SubmitReport_UnchangedReport_IsNotSentAgain()
+    {
+        using var controller = new FakeXbox360Controller(_events);
+        using var bridge = CreateBridge(controller);
+        bridge.TryConnect();
+        var pad = new PadState { Buttons = PadButtons.A, RightThumbX = 1234 };
+
+        bridge.SubmitReport(pad);
+        bridge.SubmitReport(pad);
+
+        Assert.Equal(1, controller.Submits);
+    }
+
+    [Fact]
+    public void SubmitReport_ChangedReport_IsSent()
+    {
+        using var controller = new FakeXbox360Controller(_events);
+        using var bridge = CreateBridge(controller);
+        bridge.TryConnect();
+
+        bridge.SubmitReport(new PadState { RightTrigger = 10 });
+        bridge.SubmitReport(new PadState { RightTrigger = 11 });
+
+        Assert.Equal(2, controller.Submits);
+    }
+
+    [Fact]
+    public void SubmitReport_OnlyTheNeutralisedLeftStickMoved_IsNotSentAgain()
+    {
+        using var controller = new FakeXbox360Controller(_events);
+        using var bridge = CreateBridge(controller);
+        bridge.TryConnect();
+
+        bridge.SubmitReport(new PadState { LeftThumbX = 100 }, includeStickAndDpad: false);
+        bridge.SubmitReport(new PadState { LeftThumbX = 20000 }, includeStickAndDpad: false);
+
+        Assert.Equal(1, controller.Submits);
+        Assert.Equal(0, controller.SubmittedLeftThumbX);
+    }
+
+    [Fact]
+    public void SubmitReport_SameStickOnceNeutralisedAndOnceNot_IsSentBothTimes()
+    {
+        using var controller = new FakeXbox360Controller(_events);
+        using var bridge = CreateBridge(controller);
+        bridge.TryConnect();
+        var pad = new PadState { LeftThumbX = 20000 };
+
+        bridge.SubmitReport(pad, includeStickAndDpad: false);
+        bridge.SubmitReport(pad, includeStickAndDpad: true);
+
+        Assert.Equal(2, controller.Submits);
+        Assert.Equal(20000, controller.SubmittedLeftThumbX);
+    }
+
+    [Fact]
+    public void SubmitReport_AfterReconnecting_SendsTheFirstReportEvenIfUnchanged()
+    {
+        using var controller = new FakeXbox360Controller(_events);
+        using var bridge = CreateBridge(controller);
+        bridge.TryConnect();
+        bridge.SubmitReport(default);
+        bridge.Disconnect();
+
+        bridge.TryConnect();
+        bridge.SubmitReport(default);
+
+        Assert.Equal(2, controller.Submits);
+    }
+
+    [Fact]
     public void ExcludedXInputSlots_NotConnected_ExcludesNothing()
     {
         using var controller = new FakeXbox360Controller(_events);
@@ -189,10 +272,19 @@ internal sealed class FakeXbox360Controller(List<string> events) : IXbox360Contr
 
     public void Dispose() => events.Add("controller.Dispose");
 
+    public int Submits { get; private set; }
+
+    public ushort SubmittedButtons { get; private set; }
+
+    public short SubmittedLeftThumbX { get; private set; }
+
     public void SubmitReport()
     {
         if (SubmitThrows)
             throw new InvalidOperationException("submit failed");
+        Submits++;
+        SubmittedButtons = _buttonState;
+        SubmittedLeftThumbX = _leftThumbX;
     }
 
     public void SetButtonState(Xbox360Button button, bool pressed)
@@ -201,15 +293,15 @@ internal sealed class FakeXbox360Controller(List<string> events) : IXbox360Contr
 
     public void SetAxisValue(Xbox360Axis axis, short value)
     {
+        if (axis == Xbox360Axis.LeftThumbX)
+            _leftThumbX = value;
     }
 
     public void SetSliderValue(Xbox360Slider slider, byte value)
     {
     }
 
-    public void SetButtonsFull(ushort buttons)
-    {
-    }
+    public void SetButtonsFull(ushort buttons) => _buttonState = buttons;
 
     public void SetButtonState(int index, bool pressed)
     {
