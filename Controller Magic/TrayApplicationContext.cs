@@ -70,18 +70,27 @@ namespace ControllerMagic
         // Runs EnsureMigratedAsync every launch (migrates a legacy Run key and re-points a stale
         // startup task at this exe), then - once, ever, the first time the app starts - defaults
         // startup to on, no prompt. SetEnabledAsync falls back to the Run key if the task can't be
-        // registered, so this never needs elevation.
+        // registered, so this never needs elevation. Resumes on the UI thread so it can't race
+        // Settings editing the same AppSettings instance; nothing awaits it, so it logs its own
+        // failures.
         private static async Task InitializeStartupAsync()
         {
-            await StartupHelper.EnsureMigratedAsync().ConfigureAwait(false);
+            try
+            {
+                await StartupHelper.EnsureMigratedAsync().ConfigureAwait(true);
 
-            if (AppSettings.Instance.HasInitializedStartup)
-                return;
+                if (AppSettings.Instance.HasInitializedStartup)
+                    return;
 
-            AppSettings.Instance.HasInitializedStartup = true;
-            await StartupHelper.SetEnabledAsync(true).ConfigureAwait(false);
-            AppSettings.Instance.RunAtStartup = true;
-            AppSettings.Instance.Save();
+                AppSettings.Instance.HasInitializedStartup = true;
+                await StartupHelper.SetEnabledAsync(true).ConfigureAwait(true);
+                AppSettings.Instance.RunAtStartup = true;
+                AppSettings.Instance.Save();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Default.Error("Startup-task setup failed", ex);
+            }
         }
 
         // Renders a single icon-font glyph onto a small transparent bitmap, sized and centered to

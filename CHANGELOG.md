@@ -74,6 +74,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - Old log files piled up forever. Only the three most recent archived logs are now kept.
 - Exit could hang forever if reading the controller got stuck. It now gives up after a few
   seconds and still unhides the controller.
+- Changing settings in the first moments after the very first launch could clash with the app
+  turning on "Start with Windows" in the background. A failure there is now logged.
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the
