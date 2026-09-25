@@ -19,6 +19,9 @@ internal sealed class AppLog
     // the file forever.
     private const long MaxSizeBytes = 5 * 1024 * 1024;
 
+    // Archived logs kept after a rotation; older ones are deleted so disk use stays bounded.
+    private const int ArchivesKept = 3;
+
     private readonly string _path;
     private readonly TimeProvider _clock;
     private readonly Lock _writeLock = new();
@@ -82,5 +85,19 @@ internal sealed class AppLog
 
         string archivePath = $"{_path}.{_clock.GetUtcNow():yyyyMMddHHmmss}.old";
         File.Move(_path, archivePath, overwrite: true);
+        DeleteOldArchives();
+    }
+
+    // The fixed-width UTC timestamp in each archive name makes ordinal order chronological.
+    private void DeleteOldArchives()
+    {
+        string? dir = Path.GetDirectoryName(Path.GetFullPath(_path));
+        if (dir == null)
+            return;
+
+        string[] archives = Directory.GetFiles(dir, $"{Path.GetFileName(_path)}.*.old");
+        Array.Sort(archives, StringComparer.Ordinal);
+        foreach (string stale in archives.AsSpan(0, Math.Max(0, archives.Length - ArchivesKept)))
+            File.Delete(stale);
     }
 }

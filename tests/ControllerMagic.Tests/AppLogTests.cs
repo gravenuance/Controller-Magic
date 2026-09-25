@@ -98,4 +98,36 @@ public class AppLogTests
             if (File.Exists(expectedArchive)) File.Delete(expectedArchive);
         }
     }
+
+    [Fact]
+    public void RotateIfNeeded_KeepsOnlyTheNewestArchives()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"cm-logdir-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, "app.log");
+        string[] older = ["20260101000000", "20260201000000", "20260301000000", "20260401000000"];
+        foreach (string stamp in older)
+            File.WriteAllText($"{path}.{stamp}.old", stamp);
+        File.WriteAllText(Path.Combine(dir, "unrelated.old"), "keep");
+        File.WriteAllBytes(path, new byte[5 * 1024 * 1024 + 1]);
+        var log = new AppLog(path, new FakeTimeProvider(DateTimeOffset.Parse("2026-06-15T12:00:00Z")));
+
+        try
+        {
+            log.RotateIfNeeded();
+
+            string[] remaining = Directory.GetFiles(dir, "app.log.*.old")
+                .Select(Path.GetFileName)
+                .Order(StringComparer.Ordinal)
+                .ToArray()!;
+            Assert.Equal(
+                ["app.log.20260301000000.old", "app.log.20260401000000.old", "app.log.20260615120000.old"],
+                remaining);
+            Assert.True(File.Exists(Path.Combine(dir, "unrelated.old")));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }
