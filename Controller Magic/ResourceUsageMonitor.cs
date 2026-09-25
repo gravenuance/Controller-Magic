@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace ControllerMagic;
@@ -19,6 +18,12 @@ internal sealed class ResourceUsageMonitor : IDisposable
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetGuiResources(IntPtr hProcess, uint uiFlags);
 
+    // A constant pseudo-handle: nothing to allocate or close, unlike Process.GetCurrentProcess().
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+
+    private static readonly IntPtr CurrentProcess = GetCurrentProcess();
+
     private readonly System.Threading.Timer _timer;
 
     public ResourceUsageMonitor(TimeSpan interval)
@@ -28,7 +33,7 @@ internal sealed class ResourceUsageMonitor : IDisposable
 
     // For GamepadPassthroughController's safety cutoff: a synchronous read of the live count,
     // separate from the logged snapshot below, so a caller can act on the value directly.
-    public static uint GetUserObjectCount() => GetGuiResources(Process.GetCurrentProcess().Handle, GrUserObjects);
+    public static uint GetUserObjectCount() => GetGuiResources(CurrentProcess, GrUserObjects);
 
     // Callable on demand around a specific action (a HidHide/ViGEm activate or deactivate, a
     // Settings dialog open/close), not just from the periodic timer - a count that jumps between
@@ -39,9 +44,8 @@ internal sealed class ResourceUsageMonitor : IDisposable
     {
         try
         {
-            IntPtr handle = Process.GetCurrentProcess().Handle;
-            uint gdiObjects = GetGuiResources(handle, GrGdiObjects);
-            uint userObjects = GetGuiResources(handle, GrUserObjects);
+            uint gdiObjects = GetGuiResources(CurrentProcess, GrGdiObjects);
+            uint userObjects = GetGuiResources(CurrentProcess, GrUserObjects);
             AppLog.Default.Info($"ResourceUsageMonitor ({context}): GDI objects={gdiObjects}, USER objects={userObjects}");
         }
         catch (Exception ex)

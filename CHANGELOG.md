@@ -57,6 +57,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   The reason is now written to the log.
 - Setting the PC's clock back paused the "Use HidHide" safety cutoff, and the check that keeps the
   app from reading its own virtual pad, until the clock caught up again.
+- The app's own resource check opened a process handle twice a second and left it for the garbage
+  collector to close.
 
 ## [1.8.0] - 2026-09-24
 
