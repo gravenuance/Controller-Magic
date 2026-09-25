@@ -19,7 +19,7 @@ internal static class AuthenticodeVerifier
     private const uint WtdChoiceFile = 1;
     private const uint WtdStateActionVerify = 1;
     private const uint WtdStateActionClose = 2;
-    private const uint WtdSaferFlag = 0x100;
+    private const uint WtdRevocationCheckNone = 0x10;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct WinTrustFileInfo
@@ -84,13 +84,12 @@ internal static class AuthenticodeVerifier
         return string.Equals(cn, expectedSignerCommonName, StringComparison.Ordinal);
     }
 
-    // Revocation is deliberately not checked (WtdRevokeNone): that needs live network on top of
-    // the download that already succeeded, and would turn a transient CRL/OCSP outage into an
-    // install failure for an otherwise-genuine signature. WtdSaferFlag still requires a full,
-    // valid chain to a trusted root.
+    // Revocation is deliberately off for the leaf and the whole chain, so a slow or unreachable
+    // CRL/OCSP server can neither hang nor fail an install; the chain must still reach a trusted root.
     private static X509Certificate2? VerifyAndGetSigner(string filePath, SafeFileHandle? fileHandle)
     {
         bool handleAddRefed = false;
+        bool fileInfoMarshalled = false;
         IntPtr fileInfoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WinTrustFileInfo>());
         IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WinTrustData>());
         try
@@ -103,6 +102,7 @@ internal static class AuthenticodeVerifier
                 hFile = handleAddRefed ? fileHandle!.DangerousGetHandle() : IntPtr.Zero,
             };
             Marshal.StructureToPtr(fileInfo, fileInfoPtr, false);
+            fileInfoMarshalled = true;
 
             var data = new WinTrustData
             {
@@ -112,7 +112,7 @@ internal static class AuthenticodeVerifier
                 dwUnionChoice = WtdChoiceFile,
                 pFile = fileInfoPtr,
                 dwStateAction = WtdStateActionVerify,
-                dwProvFlags = WtdSaferFlag,
+                dwProvFlags = WtdRevocationCheckNone,
             };
             Marshal.StructureToPtr(data, dataPtr, false);
 
@@ -133,6 +133,10 @@ internal static class AuthenticodeVerifier
         {
             if (handleAddRefed)
                 fileHandle!.DangerousRelease();
+
+            // StructureToPtr allocated a native copy of the path string that FreeHGlobal alone leaks.
+            if (fileInfoMarshalled)
+                Marshal.DestroyStructure<WinTrustFileInfo>(fileInfoPtr);
             Marshal.FreeHGlobal(dataPtr);
             Marshal.FreeHGlobal(fileInfoPtr);
         }

@@ -12,7 +12,9 @@ internal static class DriverPackages
 
     // Confirmed by inspecting the Authenticode signature on the real installers for both projects
     // (same certificate, thumbprint 1F431092EC96A80B41AB5317F53AC02EA6F9B89B) - this is the
-    // Common Name AuthenticodeVerifier checks against, not the full certificate subject.
+    // Common Name AuthenticodeVerifier checks against, not the full certificate subject. The
+    // thumbprint isn't pinned: HidHide is always its latest release, so a renewed certificate
+    // would block every install until the app was updated.
     public const string ExpectedSigner = "Nefarius Software Solutions e.U.";
 
     // Windows Installer's well-known "succeeded, but a reboot is needed to finish" exit code -

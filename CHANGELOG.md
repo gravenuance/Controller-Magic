@@ -61,6 +61,7 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   collector to close.
 - Installing the HidHide drivers failed when the Windows user folder had non-ASCII characters in
   its name.
+- Checking a driver installer's signature leaked a little memory each time.
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the
