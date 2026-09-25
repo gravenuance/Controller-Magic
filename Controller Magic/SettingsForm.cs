@@ -54,6 +54,7 @@ namespace ControllerMagic
 
         private readonly ControllerPoller _poller;
         private readonly System.Windows.Forms.Timer _statusTimer;
+        private readonly UiOperationRunner _operations = new(AppLog.Default);
 
         private int _layoutY;
         private int _nextTabIndex;
@@ -74,8 +75,6 @@ namespace ControllerMagic
             _statusTimer.Tick += (_, __) => RefreshStatus();
 
             BuildLayout();
-
-            _statusTimer.Start();
         }
 
         // A borderless form gets no native shadow by default; CS_DROPSHADOW gives it the same
@@ -448,39 +447,57 @@ namespace ControllerMagic
             };
             toggle.Location = new Point(_card.Width - CardPadding - toggle.Width, _cardY);
 
-            toggle.CheckedChanged += async (_, __) =>
-            {
-                // Stays on the UI thread: toggle is read again after the await.
-                await StartupHelper.SetEnabledAsync(toggle.Checked).ConfigureAwait(true);
-                AppSettings.Instance.RunAtStartup = toggle.Checked;
-                RequestSave();
-            };
+            toggle.Toggled += (_, __) => _ = _operations.RunAsync(
+                "changing Start with Windows",
+                _ => ApplyStartupChoiceAsync(toggle),
+                _ =>
+                {
+                    if (!toggle.IsDisposed)
+                        toggle.Checked = AppSettings.Instance.RunAtStartup;
+                });
 
             _card.Controls.Add(title);
             _card.Controls.Add(toggle);
 
             _cardY += toggle.Height;
 
-            _ = ReconcileStartupToggleAsync(toggle);
+            // A click that lands before the query returns wins over the (by then stale) query result.
+            bool userChanged = false;
+            toggle.Toggled += (_, __) => userChanged = true;
+            _ = _operations.RunAsync(
+                "checking Start with Windows",
+                ct => ReconcileStartupToggleAsync(toggle, () => userChanged, ct),
+                _ => { });
         }
 
-        private static async Task ReconcileStartupToggleAsync(ToggleSwitch toggle)
+        // Busy until schtasks finishes, so rapid clicks can't run overlapping changes. Not cancelled
+        // on close: the user's choice still gets applied and saved.
+        private static async Task ApplyStartupChoiceAsync(ToggleSwitch toggle)
         {
-            bool actuallyEnabled = await StartupHelper.IsEnabledAsync().ConfigureAwait(false);
-
-            if (toggle.IsDisposed || actuallyEnabled == toggle.Checked)
-                return;
-
-            void Apply()
+            bool wanted = toggle.Checked;
+            toggle.Busy = true;
+            try
+            {
+                await StartupHelper.SetEnabledAsync(wanted).ConfigureAwait(true);
+                AppSettings.Instance.RunAtStartup = wanted;
+                RequestSave();
+            }
+            finally
             {
                 if (!toggle.IsDisposed)
-                    toggle.Checked = actuallyEnabled;
+                    toggle.Busy = false;
             }
+        }
 
-            if (toggle.InvokeRequired)
-                toggle.BeginInvoke((Action)Apply);
-            else
-                Apply();
+        // Display only: a query that fails transiently must never switch startup off or save anything.
+        private static async Task ReconcileStartupToggleAsync(ToggleSwitch toggle, Func<bool> userChanged, CancellationToken ct)
+        {
+            bool actuallyEnabled = await StartupHelper.IsEnabledAsync(ct).ConfigureAwait(true);
+
+            if (ct.IsCancellationRequested || toggle.IsDisposed || userChanged())
+                return;
+
+            toggle.Checked = actuallyEnabled;
         }
 
         private const string HidHideNeedsDriversText = "Needs drivers - connect to the internet to install.";
@@ -527,102 +544,108 @@ namespace ControllerMagic
             _card.Controls.Add(status);
             _cardY += 18;
 
-            // Detached while handling one change and reattached afterward: the failure path below
-            // reverts toggle.Checked itself, which would otherwise re-enter this same handler
-            // (ToggleSwitch.CheckedChanged fires on any actual value change) and immediately
-            // overwrite the failure message this handler is about to show.
-            EventHandler? handler = null;
-            handler = async (_, __) =>
+            void ShowStatus(string text)
             {
-                toggle.CheckedChanged -= handler;
-                try
-                {
-                    await OnHidHideToggleChangedAsync(toggle, status).ConfigureAwait(true);
-                }
-                finally
-                {
-                    toggle.CheckedChanged += handler;
-                }
-            };
-            toggle.CheckedChanged += handler;
+                if (!status.IsDisposed)
+                    status.Text = text;
+            }
 
-            _ = ReconcileHidHideToggleAsync(toggle, status);
+            toggle.Toggled += (_, __) => _ = _operations.RunAsync(
+                "changing Use HidHide",
+                ct => OnHidHideToggledAsync(toggle, ShowStatus, ct),
+                text =>
+                {
+                    if (!toggle.IsDisposed)
+                        toggle.Checked = AppSettings.Instance.UseHidHide;
+                    ShowStatus(text);
+                });
+
+            _ = _operations.RunAsync("checking HidHide drivers", ct => ReconcileHidHideToggleAsync(toggle, ShowStatus, ct), ShowStatus);
         }
 
-        private async Task OnHidHideToggleChangedAsync(ToggleSwitch toggle, Label status)
+        // Busy for the whole change, so a second click can't start a second driver install.
+        private async Task OnHidHideToggledAsync(ToggleSwitch toggle, Action<string> showStatus, CancellationToken ct)
+        {
+            toggle.Busy = true;
+            try
+            {
+                await ApplyHidHideChoiceAsync(toggle, showStatus, ct).ConfigureAwait(true);
+            }
+            finally
+            {
+                if (!toggle.IsDisposed)
+                    toggle.Busy = false;
+            }
+        }
+
+        private async Task ApplyHidHideChoiceAsync(ToggleSwitch toggle, Action<string> showStatus, CancellationToken ct)
         {
             if (!toggle.Checked)
             {
-                AppSettings.Instance.UseHidHide = false;
-                RequestSave();
-                status.Text = string.Empty;
+                SaveUseHidHide(false);
+                showStatus(string.Empty);
                 return;
             }
 
-            var driverStatus = await _poller.DetectDriverStatusAsync().ConfigureAwait(true);
-            if (!driverStatus.HidHideInstalled || !driverStatus.VigemInstalled)
+            var driverStatus = await _poller.DetectDriverStatusAsync(ct).ConfigureAwait(true);
+            ct.ThrowIfCancellationRequested();
+            if (driverStatus.HidHideInstalled && driverStatus.VigemInstalled)
             {
-                var progress = new Progress<string>(text => status.Text = text);
-                var result = await DriverInstaller.InstallAsync(driverStatus, progress, CancellationToken.None).ConfigureAwait(true);
-
-                switch (result.Outcome)
-                {
-                    case InstallOutcome.Success:
-                        await _poller.RefreshDriverStatusAsync().ConfigureAwait(true);
-                        break;
-
-                    case InstallOutcome.RebootRequired:
-                        // Intent is still "on" - a driver install genuinely needs a restart to
-                        // finish, so save that now rather than making the user flip the toggle
-                        // again after rebooting. GamepadPassthroughController's own driver check
-                        // won't actually activate anything until it detects the driver is truly
-                        // operational, so this can't turn cloaking on prematurely.
-                        await _poller.RefreshDriverStatusAsync().ConfigureAwait(true);
-                        AppSettings.Instance.UseHidHide = true;
-                        RequestSave();
-                        status.Text = "Restart your computer to finish setup.";
-                        return;
-
-                    default:
-                        toggle.Checked = false;
-                        status.Text = result.Outcome switch
-                        {
-                            InstallOutcome.ElevationDeclined => "Elevation was cancelled.",
-                            InstallOutcome.NetworkError => "No network - couldn't download drivers.",
-                            InstallOutcome.DiskError => "Couldn't save drivers - check disk space.",
-                            InstallOutcome.SignatureVerificationFailed => "Driver signature check failed.",
-                            _ => "Driver install failed - see log.",
-                        };
-                        return;
-                }
+                SaveUseHidHide(true);
+                showStatus(string.Empty);
+                return;
             }
 
-            AppSettings.Instance.UseHidHide = true;
-            RequestSave();
-            status.Text = string.Empty;
+            // Progress reports are posted to the UI thread and can arrive after the window closed.
+            var progress = new Progress<string>(text =>
+            {
+                if (!ct.IsCancellationRequested)
+                    showStatus(text);
+            });
+            var result = await DriverInstaller.InstallAsync(driverStatus, progress, ct).ConfigureAwait(true);
+
+            // Saved even if the window has closed meanwhile: the drivers are in. After RebootRequired
+            // GamepadPassthroughController still waits until the driver actually works.
+            bool installed = result.Outcome is InstallOutcome.Success or InstallOutcome.RebootRequired;
+            if (installed)
+            {
+                await _poller.RefreshDriverStatusAsync().ConfigureAwait(true);
+                SaveUseHidHide(true);
+            }
+
+            ct.ThrowIfCancellationRequested();
+            if (!installed)
+                toggle.Checked = false;
+            showStatus(DescribeInstallOutcome(result.Outcome));
         }
 
-        private async Task ReconcileHidHideToggleAsync(ToggleSwitch toggle, Label status)
+        private static void SaveUseHidHide(bool enabled)
         {
-            var driverStatus = await _poller.DetectDriverStatusAsync().ConfigureAwait(false);
-            bool enabled = DriverDependency.ShouldToggleBeEnabled(driverStatus);
+            AppSettings.Instance.UseHidHide = enabled;
+            RequestSave();
+        }
 
-            if (toggle.IsDisposed)
+        private static string DescribeInstallOutcome(InstallOutcome outcome) => outcome switch
+        {
+            InstallOutcome.Success => string.Empty,
+            InstallOutcome.RebootRequired => "Restart your computer to finish setup.",
+            InstallOutcome.ElevationDeclined => "Elevation was cancelled.",
+            InstallOutcome.NetworkError => "No network - couldn't download drivers.",
+            InstallOutcome.DiskError => "Couldn't save drivers - check disk space.",
+            InstallOutcome.SignatureVerificationFailed => "Driver signature check failed.",
+            InstallOutcome.InstallFailed => "Driver install failed - see log.",
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, null),
+        };
+
+        private async Task ReconcileHidHideToggleAsync(ToggleSwitch toggle, Action<string> showStatus, CancellationToken ct)
+        {
+            var driverStatus = await _poller.DetectDriverStatusAsync(ct).ConfigureAwait(true);
+            if (ct.IsCancellationRequested || toggle.IsDisposed)
                 return;
 
-            void Apply()
-            {
-                if (toggle.IsDisposed || status.IsDisposed)
-                    return;
-
-                toggle.Enabled = enabled;
-                status.Text = enabled ? string.Empty : HidHideNeedsDriversText;
-            }
-
-            if (toggle.InvokeRequired)
-                toggle.BeginInvoke((Action)Apply);
-            else
-                Apply();
+            bool enabled = DriverDependency.ShouldToggleBeEnabled(driverStatus);
+            toggle.Enabled = enabled;
+            showStatus(enabled ? string.Empty : HidHideNeedsDriversText);
         }
 
         private void AddChipField(string label, List<string> initialItems, Action<List<string>> onChanged)
@@ -664,11 +687,21 @@ namespace ControllerMagic
 
         private static void RequestSave() => AppSettings.Instance.RequestSave();
 
+        // Cancelled rather than left running, so nothing touches this window's controls after close;
+        // the runner renews its token in case the same form is shown again.
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
-            _statusTimer.Stop();
+            _operations.CancelAll();
             AppSettings.Instance.FlushPendingSave();
             base.OnFormClosed(e);
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            _statusTimer.Enabled = Visible;
+            if (Visible)
+                RefreshStatus();
+            base.OnVisibleChanged(e);
         }
 
         // ============ window dragging ============

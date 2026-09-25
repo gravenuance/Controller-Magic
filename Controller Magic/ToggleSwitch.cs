@@ -7,6 +7,7 @@ namespace ControllerMagic
     // of looking like any other button in the window.
     internal sealed class ToggleSwitch : Control
     {
+        // Setting this in code never raises Toggled, so a background status check can't act as a user click.
         public bool Checked
         {
             get;
@@ -15,11 +16,26 @@ namespace ControllerMagic
                 if (field == value) return;
                 field = value;
                 Invalidate();
-                CheckedChanged?.Invoke(this, EventArgs.Empty);
+                AccessibilityNotifyClients(AccessibleEvents.StateChange, -1);
             }
         }
 
-        public event EventHandler? CheckedChanged;
+        // While true the switch keeps focus but ignores clicks and keys, e.g. while a change it started is applied.
+        public bool Busy
+        {
+            get;
+            set
+            {
+                if (field == value) return;
+                field = value;
+                UpdateCursor();
+                Invalidate();
+                AccessibilityNotifyClients(AccessibleEvents.StateChange, -1);
+            }
+        }
+
+        // Raised only when the user flips the switch.
+        public event EventHandler? Toggled;
 
         public Color TrackOffColor { get; set; } = Color.FromArgb(0x22, 0x26, 0x2D);
         public Color TrackOnColor { get; set; } = Color.FromArgb(0xE8, 0xA3, 0x3D);
@@ -35,9 +51,16 @@ namespace ControllerMagic
             TabStop = true;
         }
 
+        internal void ToggleByUser()
+        {
+            if (Busy) return;
+            Checked = !Checked;
+            Toggled?.Invoke(this, EventArgs.Empty);
+        }
+
         protected override void OnClick(EventArgs e)
         {
-            Checked = !Checked;
+            ToggleByUser();
             base.OnClick(e);
         }
 
@@ -45,7 +68,7 @@ namespace ControllerMagic
         {
             if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter)
             {
-                Checked = !Checked;
+                ToggleByUser();
                 e.Handled = true;
             }
             base.OnKeyDown(e);
@@ -59,10 +82,12 @@ namespace ControllerMagic
         // disabled control showing a hand cursor reads as a bug.
         protected override void OnEnabledChanged(EventArgs e)
         {
-            Cursor = Enabled ? Cursors.Hand : Cursors.Default;
+            UpdateCursor();
             Invalidate();
             base.OnEnabledChanged(e);
         }
+
+        private void UpdateCursor() => Cursor = Enabled && !Busy ? Cursors.Hand : Cursors.Default;
 
         private static Color Muted(Color c) => Blend(c, Theme.Muted, 0.6f);
 
@@ -81,6 +106,7 @@ namespace ControllerMagic
             public override AccessibleStates State =>
                 base.State
                 | (owner.Checked ? AccessibleStates.Checked : AccessibleStates.None)
+                | (owner.Busy ? AccessibleStates.Busy : AccessibleStates.None)
                 | (owner.Focused ? AccessibleStates.Focused : AccessibleStates.None);
         }
 
@@ -95,7 +121,7 @@ namespace ControllerMagic
             Color trackColor = Checked ? TrackOnColor : TrackOffColor;
             Color borderColor = Checked ? TrackOnColor : BorderColor;
             Color knobColor = KnobColor;
-            if (!Enabled)
+            if (!Enabled || Busy)
             {
                 trackColor = Muted(trackColor);
                 borderColor = Muted(borderColor);

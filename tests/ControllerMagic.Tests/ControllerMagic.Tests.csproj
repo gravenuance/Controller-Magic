@@ -6,6 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- The custom controls (ToggleSwitch, ChipList) are tested without ever creating a window handle. -->
+    <UseWindowsForms>true</UseWindowsForms>
 
     <!-- CA1707 (no underscores in identifiers): MethodName_Scenario_ExpectedBehavior is the
          standard xUnit test-naming convention - deliberately different from production naming,

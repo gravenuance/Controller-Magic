@@ -103,6 +103,12 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 - A setting that changed after the Settings window closed, such as "Use HidHide" once its
   driver setup finished, relied on the closed window to be saved.
+- Opening Settings could switch "Start with Windows" off, or show an admin prompt, when the
+  background check of its real state failed or disagreed. That check now only updates the switch.
+  Quick repeated clicks no longer run overlapping changes; the switch waits for each to finish.
+- An error while checking or installing the HidHide drivers in Settings brought up the crash
+  dialog. It's now logged with a short message under the switch. Closing Settings during a
+  driver download stops it, and a second click can't start a second install.
 
 ### Security
 - Driver installers could be swapped by another program between the signature check and the
