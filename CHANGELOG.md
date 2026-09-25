@@ -55,6 +55,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   with Shift or Ctrl still held.
 - If SDL failed to start, PlayStation, Switch and other non-Xbox controllers silently did nothing.
   The reason is now written to the log.
+- Setting the PC's clock back paused the "Use HidHide" safety cutoff, and the check that keeps the
+  app from reading its own virtual pad, until the clock caught up again.
 
 ## [1.8.0] - 2026-09-24
 

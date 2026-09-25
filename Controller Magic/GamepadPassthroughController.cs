@@ -56,7 +56,8 @@ internal sealed class GamepadPassthroughController : IDisposable
     // entirely - see Sdl2PadReader's constructor - but the failure mode was bad enough that this
     // proactive cutoff stays: if USER objects ever climb again for any other reason, this
     // degrades it to "the feature turns itself off" instead of "the whole app UI stops working."
-    private DateTimeOffset _lastResourceCheckUtc = DateTimeOffset.MinValue;
+    private readonly Func<uint> _userObjectCount;
+    private long? _lastResourceCheck;
     private static readonly TimeSpan ResourceCheckInterval = TimeSpan.FromMilliseconds(500);
     private const uint UserObjectSafetyThreshold = 5000;
     private bool _thresholdLogged;
@@ -70,7 +71,16 @@ internal sealed class GamepadPassthroughController : IDisposable
     internal GamepadPassthroughController(
         IHidHide hidHide, IVirtualPad virtualPad, TimeProvider clock,
         Func<bool> settingOn, Func<Action, Task> runInBackground, Func<IHidHide, DriverStatus> detectDrivers)
+        : this(hidHide, virtualPad, clock, settingOn, runInBackground, detectDrivers, ResourceUsageMonitor.GetUserObjectCount)
     {
+    }
+
+    internal GamepadPassthroughController(
+        IHidHide hidHide, IVirtualPad virtualPad, TimeProvider clock,
+        Func<bool> settingOn, Func<Action, Task> runInBackground, Func<IHidHide, DriverStatus> detectDrivers,
+        Func<uint> userObjectCount)
+    {
+        _userObjectCount = userObjectCount;
         _hidHide = hidHide;
         _vigem = virtualPad;
         _clock = clock;
@@ -209,12 +219,12 @@ internal sealed class GamepadPassthroughController : IDisposable
 
     private void CheckResourceSafety()
     {
-        var now = _clock.GetUtcNow();
-        if (now - _lastResourceCheckUtc < ResourceCheckInterval)
+        // Monotonic, so setting the system clock back can't pause the check.
+        if (_lastResourceCheck is { } last && _clock.GetElapsedTime(last) < ResourceCheckInterval)
             return;
-        _lastResourceCheckUtc = now;
+        _lastResourceCheck = _clock.GetTimestamp();
 
-        uint userObjects = ResourceUsageMonitor.GetUserObjectCount();
+        uint userObjects = _userObjectCount();
         if (userObjects < UserObjectSafetyThreshold)
         {
             _thresholdLogged = false;

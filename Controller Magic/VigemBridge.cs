@@ -35,7 +35,7 @@ internal sealed class VigemBridge : IVirtualPad
     private volatile IXbox360Controller? _controller;
     private int _slotsInUseBeforeConnect;
     private int? _userIndex;
-    private DateTimeOffset _nextUserIndexQueryUtc;
+    private long? _lastUserIndexQuery;
     // Null until the current connection's first report, so a new connection always gets one.
     private Report? _lastSent;
 
@@ -74,10 +74,10 @@ internal sealed class VigemBridge : IVirtualPad
                 if (_controller == null)
                     return 0;
 
-                if (_userIndex is null && _clock.GetUtcNow() >= _nextUserIndexQueryUtc)
+                if (_userIndex is null && (_lastUserIndexQuery is not { } asked || _clock.GetElapsedTime(asked) >= UserIndexQueryInterval))
                 {
                     _userIndex = QueryUserIndex(_controller);
-                    _nextUserIndexQueryUtc = _clock.GetUtcNow() + UserIndexQueryInterval;
+                    _lastUserIndexQuery = _clock.GetTimestamp();
                 }
 
                 return _userIndex is int slot ? 1 << slot : ~_slotsInUseBeforeConnect & AllXInputSlots;
@@ -134,7 +134,7 @@ internal sealed class VigemBridge : IVirtualPad
             _controller = controller;
             _slotsInUseBeforeConnect = slotsInUseBeforeConnect;
             _userIndex = null;
-            _nextUserIndexQueryUtc = DateTimeOffset.MinValue;
+            _lastUserIndexQuery = null;
             _lastSent = null;
         }
 
