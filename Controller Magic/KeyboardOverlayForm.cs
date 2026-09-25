@@ -12,6 +12,13 @@
         private readonly System.Windows.Forms.Timer _timer;
         private int _keyboardPaintCount;
         private long _lastTimerTickTimestamp;
+        private readonly OverlayRepaintGate _repaintGate = new();
+        private const string Legend = "X = ⌫   Y = ␣   B = .";
+        // Keyed by the DPI it was measured at, which changes when the window moves monitors.
+        private (float Dpi, SizeF Size)? _legendSize;
+
+        // One string per tile, built once instead of per tile per frame.
+        internal static readonly string[,,] TileLabels = BuildTileLabels();
 
         // BackColor/TransparencyKey below must stay pure black - that exact color is the chroma
         // key that makes the rest of the window invisible, so only these drawn tiles show up
@@ -54,7 +61,8 @@
             _timer.Tick += (_, __) =>
             {
                 _lastTimerTickTimestamp = _clock.GetTimestamp();
-                Invalidate();
+                if (_repaintGate.NeedsRepaint(OverlayFrame.Of(_poller)))
+                    Invalidate();
             };
         }
 
@@ -174,14 +182,16 @@
             var g = e.Graphics;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            if (!_poller.KeyboardMode)
+            var frame = OverlayFrame.Of(_poller);
+            _repaintGate.Painted(frame);
+            if (!frame.KeyboardMode)
                 return;
 
             _keyboardPaintCount++;
             var layout = ControllerPoller.KeyboardLayout;
-            int layer = _poller.KeyboardLayer;
-            int hot = _poller.CurrentSector;
-            int slot = _poller.SlotIndex;
+            int layer = frame.Layer;
+            int hot = frame.Sector;
+            int slot = frame.Slot;
 
             float cx = ClientSize.Width / 2f;
             float cy = ClientSize.Height / 2f;
@@ -221,7 +231,7 @@
                     g.FillEllipse(isHot && isSelectedSlot ? _hotBrush : _normalBrush, rect);
                     g.DrawEllipse(_pen, rect);
 
-                    g.DrawString(entry.Display.ToString(), _tileFont, _textBrush, rect, _centerFormat);
+                    g.DrawString(TileLabels[layer, sector, index], _tileFont, _textBrush, rect, _centerFormat);
                 }
             }
 
@@ -230,13 +240,24 @@
 
         private void DrawLegend(Graphics g)
         {
-            const string legend = "X = ⌫   Y = ␣   B = .";
+            if (_legendSize is not { } cached || cached.Dpi != g.DpiY)
+                _legendSize = cached = (g.DpiY, g.MeasureString(Legend, _legendFont));
 
-            var size = g.MeasureString(legend, _legendFont);
-            float x = ClientSize.Width - size.Width - 20;
-            float y = ClientSize.Height - size.Height - 20;
+            float x = ClientSize.Width - cached.Size.Width - 20;
+            float y = ClientSize.Height - cached.Size.Height - 20;
 
-            g.DrawString(legend, _legendFont, _textBrush, x, y);
+            g.DrawString(Legend, _legendFont, _textBrush, x, y);
+        }
+
+        private static string[,,] BuildTileLabels()
+        {
+            var layout = ControllerPoller.KeyboardLayout;
+            var labels = new string[layout.GetLength(0), layout.GetLength(1), layout.GetLength(2)];
+            for (int layer = 0; layer < labels.GetLength(0); layer++)
+                for (int sector = 0; sector < labels.GetLength(1); sector++)
+                    for (int index = 0; index < labels.GetLength(2); index++)
+                        labels[layer, sector, index] = layout[layer, sector, index].Display.ToString();
+            return labels;
         }
 
         private const int WS_EX_TRANSPARENT = 0x00000020;

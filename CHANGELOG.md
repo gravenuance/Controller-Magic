@@ -25,6 +25,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   don't affect it.
 - Builds no longer pull in an unused native SDL2 package, and the copyright year is fixed, so a
   release built from its tag always produces the same file.
+- The on-screen keyboard is only redrawn when the highlighted letter or layer changes, instead of
+  60 times a second, so it uses less CPU while open.
 
 ### Fixed
 - With "Use HidHide" on, a fullscreen game kept the real controller hidden and saw only a frozen
