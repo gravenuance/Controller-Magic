@@ -28,6 +28,9 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 - The on-screen keyboard typed `=`, `'` and `;` when `+`, `"` and `:` were picked.
 - In the on-screen keyboard, moving the stick to a group with fewer letters than the one picked
   before highlighted an empty slot and A typed nothing. It now picks that group's last letter.
+- After the controller dropped out and came back, a button held when it dropped could fire once
+  more (a stray click from A, for example), and a stick held through the reconnect moved the
+  cursor at full speed straight away. Buttons still held on reconnect now wait to be let go.
 
 ## [1.8.0] - 2026-09-24
 

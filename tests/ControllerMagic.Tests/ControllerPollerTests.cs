@@ -140,4 +140,36 @@ public class ControllerPollerTests
 
         Assert.Equal(PadButtons.B, result);
     }
+
+    [Fact]
+    public void Reconnect_ButtonHeldAtDropThenReleased_IsNotReportedAgain()
+    {
+        using var poller = new ControllerPoller();
+        poller.FilterButtons(PadButtons.A);
+        poller.FilterButtons(PadButtons.A); // stable at A
+
+        poller.HandlePadLost();
+
+        Assert.Equal(PadButtons.None, poller.FilterButtons(PadButtons.None));
+    }
+
+    [Fact]
+    public void Reconnect_ButtonHeldThroughTheDrop_IsIgnoredUntilReleased()
+    {
+        using var poller = new ControllerPoller();
+        poller.FilterButtons(PadButtons.B);
+        poller.FilterButtons(PadButtons.B);
+
+        poller.HandlePadLost();
+        PadButtons first = poller.FilterButtons(PadButtons.B);
+        PadButtons second = poller.FilterButtons(PadButtons.B);
+        poller.FilterButtons(PadButtons.None);
+        poller.FilterButtons(PadButtons.None);
+        poller.FilterButtons(PadButtons.B);
+        PadButtons pressedAgain = poller.FilterButtons(PadButtons.B);
+
+        Assert.Equal(PadButtons.None, first);
+        Assert.Equal(PadButtons.None, second);
+        Assert.Equal(PadButtons.B, pressedAgain);
+    }
 }

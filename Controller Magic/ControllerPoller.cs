@@ -549,7 +549,7 @@ namespace ControllerMagic
 
             if (gotPad)
             {
-                pad.Buttons = DebounceButtons(_heldOverButtons.Filter(pad.Buttons));
+                pad.Buttons = FilterButtons(pad.Buttons);
 
                 if (_keyboardMode)
                 {
@@ -565,8 +565,7 @@ namespace ControllerMagic
             }
             else
             {
-                // A pad lost mid-drag would otherwise leave the left mouse button held down.
-                ReleaseHeldInput();
+                HandlePadLost();
             }
 
             _passthrough.Tick(pad, gotPad, _connection.Identity, _connection.Serial);
@@ -603,6 +602,18 @@ namespace ControllerMagic
         // nothing this app pressed stays held while it isn't reading the pad.
         internal void StandDownForFullscreen()
         {
+            PauseInput();
+
+            _passthrough.SetFullscreenSuspended(true);
+            _passthrough.Tick(default, gotPad: false, _connection.Identity, _connection.Serial);
+        }
+
+        internal void HandlePadLost() => PauseInput();
+
+        // Whatever was held or moving when input stopped must not resume as a press, a click or a
+        // stick already at full ramp speed; triggers count as held until released.
+        private void PauseInput()
+        {
             ReleaseHeldInput();
             _heldOverButtons.SuppressHeld();
             _lastRawButtons = PadButtons.None;
@@ -610,10 +621,12 @@ namespace ControllerMagic
             _prevButtons = PadButtons.None;
             _ltWasDown = true;
             _rtWasDown = true;
-
-            _passthrough.SetFullscreenSuspended(true);
-            _passthrough.Tick(default, gotPad: false, _connection.Identity, _connection.Serial);
+            _moveHoldStartTick = 0;
+            _dxRemainder = 0;
+            _dyRemainder = 0;
         }
+
+        internal PadButtons FilterButtons(PadButtons raw) => DebounceButtons(_heldOverButtons.Filter(raw));
 
         private void ReleaseHeldInput()
         {
