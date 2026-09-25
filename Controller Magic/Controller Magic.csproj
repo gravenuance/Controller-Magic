@@ -59,7 +59,7 @@
     <PackageReference Include="ppy.SDL2-CS" Version="1.0.741-alpha" ExcludeAssets="contentFiles" />
     <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
     <PackageReference Include="Nefarius.Drivers.HidHide" Version="3.4.0" />
-    <PackageReference Include="Nefarius.Utilities.DeviceManagement" Version="5.2.0" />
+    <PackageReference Include="Nefarius.Utilities.DeviceManagement" Version="6.1.0" />
     <!-- Nefarius.Vicius.Abstractions (a transitive dependency via Nefarius.Drivers.HidHide's
          HidHideSetupProvider) references NJsonSchema.Annotations attributes on its DTOs but
          doesn't declare it as a runtime dependency - System.Text.Json's reflection-based type-info
