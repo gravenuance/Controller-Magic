@@ -105,6 +105,40 @@ public sealed class AppSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Load_OutOfRangeValue_SavesTheCorrectionOnceSoTheNextLoadIsQuiet()
+    {
+        string json = $$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion}}, "StickDeadZone": 99999, "TouchpadSpeed": 900}""";
+        WriteSettings(json);
+        string logPath = Path.Combine(_dir, "app.log");
+
+        CreateStore().Load();
+        int warningsAfterFirstLoad = File.ReadAllLines(logPath).Count(line => line.Contains("out-of-range", StringComparison.Ordinal));
+        var reloaded = CreateStore().Load();
+        int warningsAfterSecondLoad = File.ReadAllLines(logPath).Count(line => line.Contains("out-of-range", StringComparison.Ordinal));
+
+        Assert.Equal(1, warningsAfterFirstLoad);
+        Assert.Equal(1, warningsAfterSecondLoad);
+        Assert.Equal(AppSettings.StickDeadZoneRange.Max, ReadJson(SettingsPath).GetProperty("StickDeadZone").GetInt32());
+        Assert.Equal(900, reloaded.TouchpadSpeed);
+        Assert.Equal(json, File.ReadAllText(BadBackupPath));
+    }
+
+    [Fact]
+    public void Load_OutOfRangeValueWhenBackupFails_LeavesTheFileUntouched()
+    {
+        string json = $$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion}}, "StickDeadZone": 99999}""";
+        WriteSettings(json);
+        Directory.CreateDirectory(BadBackupPath);
+        var store = CreateStore();
+
+        var settings = store.Load();
+
+        Assert.Equal(AppSettings.StickDeadZoneRange.Max, settings.StickDeadZone);
+        Assert.True(store.IsReadOnly);
+        Assert.Equal(json, File.ReadAllText(SettingsPath));
+    }
+
+    [Fact]
     public void Load_PreVersioningFile_MigratesAndKeepsACopyOfTheOriginal()
     {
         const string legacy = """{"StickSensitivity": 0.042}""";

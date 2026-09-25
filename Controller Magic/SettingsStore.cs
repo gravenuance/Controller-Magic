@@ -116,7 +116,10 @@ internal sealed class SettingsStore : IDisposable
             return settings;
         }
 
-        bool lostData = parsed.State == SettingsFileState.Unreadable || parsed.DroppedFields.Count > 0;
+        // A clamped value is written back so it's corrected once, not on every launch; the original is kept.
+        bool lostData = parsed.State == SettingsFileState.Unreadable
+            || parsed.DroppedFields.Count > 0
+            || parsed.CorrectedFields.Count > 0;
         if (lostData && !TryBackUp(source, BadCopyPath()))
             return settings;
         if (parsed.State == SettingsFileState.Older && !TryBackUp(source, $"{_path}.v{parsed.FileVersion}.bak"))

@@ -99,7 +99,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 - An empty list or an out-of-range number in the settings file kept Settings from opening or
   made the cursor misbehave. Such values are now reset or brought into the range the Settings
-  sliders allow, and the log says which ones.
+  sliders allow, and the log says which ones. The corrected file is saved once, with the
+  original kept as `settings.json.bad-<date>`, so the warning doesn't repeat at every launch.
 
 - A setting that changed after the Settings window closed, such as "Use HidHide" once its
   driver setup finished, relied on the closed window to be saved.
