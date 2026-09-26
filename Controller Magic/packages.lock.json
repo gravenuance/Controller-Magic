@@ -15,9 +15,9 @@
       },
       "Nefarius.Utilities.DeviceManagement": {
         "type": "Direct",
-        "requested": "[5.2.0, )",
-        "resolved": "5.2.0",
-        "contentHash": "ouzWKcW/43Pc0ogGCJsZdyjD3b6Jb6WUykHuRcjd8sV0EmuvCKanBKzDWgH01lyYpTtSugS4rOb9lL4Qbi0qbg=="
+        "requested": "[6.1.0, )",
+        "resolved": "6.1.0",
+        "contentHash": "RlT/81XufI//vF374U1211wHq6+FYh4y/+A4LpGapgDKxJLspa07+7PSR5L5oReHNNsNK3rPfbTXsX9bayFgBA=="
       },
       "Nefarius.ViGEm.Client": {
         "type": "Direct",
