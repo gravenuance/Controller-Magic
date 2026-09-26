@@ -5,6 +5,13 @@ namespace ControllerMagic;
 
 // The Task Scheduler definition behind "Start with Windows", and the check that a registered one
 // still matches this exe. Pure XML work, kept apart from the schtasks.exe calls in StartupHelper.
+internal enum StartupTaskAction
+{
+    None,
+    Register,
+    Reregister,
+}
+
 internal static class StartupTaskDefinition
 {
     public const string StartupArgument = "--startup";
@@ -51,10 +58,12 @@ internal static class StartupTaskDefinition
         return writer.ToString();
     }
 
-    // True when the registered task would not start this exe for this user: a different or
-    // unreadable command, or a logon trigger for any user rather than a named one.
-    public static bool NeedsRefresh(string registeredTaskXml, string exePath)
+    // What launch should do about the registered task (null when none is registered).
+    public static StartupTaskAction Plan(bool runAtStartup, string? registeredTaskXml, string exePath)
     {
+        if (registeredTaskXml is null)
+            return runAtStartup ? StartupTaskAction.Register : StartupTaskAction.None;
+
         XElement? root;
         try
         {
@@ -62,16 +71,16 @@ internal static class StartupTaskDefinition
         }
         catch (XmlException)
         {
-            return true;
+            return StartupTaskAction.Reregister;
         }
 
         string? command = root?.Element(Ns + "Actions")?.Element(Ns + "Exec")?.Element(Ns + "Command")?.Value;
         if (command is null || !IsSameExecutable(command, exePath))
-            return true;
+            return StartupTaskAction.Reregister;
 
-        var logonTriggers = root!.Element(Ns + "Triggers")?.Elements(Ns + "LogonTrigger").ToList() ?? [];
-        return logonTriggers.Count == 0 ||
-               logonTriggers.Exists(t => string.IsNullOrWhiteSpace(t.Element(Ns + "UserId")?.Value));
+        // A logon trigger for any user can only be replaced with admin, and it still starts this exe.
+        bool hasLogonTrigger = root!.Element(Ns + "Triggers")?.Elements(Ns + "LogonTrigger").Any() == true;
+        return hasLogonTrigger ? StartupTaskAction.None : StartupTaskAction.Reregister;
     }
 
     public static bool IsSameExecutable(string a, string b)

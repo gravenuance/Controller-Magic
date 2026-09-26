@@ -8,6 +8,15 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-09-26
+
+### Fixed
+- If the "Start with Windows" task was deleted while the setting was on, the app no longer
+  started with Windows and never noticed. It now registers the task again on launch.
+- A startup task from before 1.9.0, which covers every user, made each launch try to replace it
+  and log three warnings. Only an administrator can replace it, and it still starts the app, so
+  it's now left alone. Why Windows refused a startup task is now written to the log.
+
 ## [1.9.1] - 2026-09-26
 
 ### Fixed

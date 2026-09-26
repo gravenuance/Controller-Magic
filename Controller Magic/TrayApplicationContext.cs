@@ -82,7 +82,7 @@ namespace ControllerMagic
         {
             try
             {
-                await StartupHelper.EnsureMigratedAsync().ConfigureAwait(true);
+                await StartupHelper.EnsureMigratedAsync(AppSettings.Instance.RunAtStartup).ConfigureAwait(true);
 
                 if (AppSettings.Instance.HasInitializedStartup)
                     return;

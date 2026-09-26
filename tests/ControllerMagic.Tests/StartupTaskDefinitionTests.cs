@@ -54,24 +54,27 @@ public class StartupTaskDefinitionTests
     }
 
     [Fact]
-    public void NeedsRefresh_TaskBuiltForThisExe_IsFalse() =>
-        Assert.False(StartupTaskDefinition.NeedsRefresh(StartupTaskDefinition.BuildXml(Exe, UserSid), Exe));
+    public void Plan_TaskBuiltForThisExe_DoesNothing() =>
+        Assert.Equal(StartupTaskAction.None, StartupTaskDefinition.Plan(true, StartupTaskDefinition.BuildXml(Exe, UserSid), Exe));
 
     [Fact]
-    public void NeedsRefresh_ExeMoved_IsTrue() =>
-        Assert.True(StartupTaskDefinition.NeedsRefresh(StartupTaskDefinition.BuildXml(@"D:\Old\Controller Magic.exe", UserSid), Exe));
+    public void Plan_ExeMoved_Reregisters() =>
+        Assert.Equal(
+            StartupTaskAction.Reregister,
+            StartupTaskDefinition.Plan(true, StartupTaskDefinition.BuildXml(@"D:\Old\Controller Magic.exe", UserSid), Exe));
 
     [Fact]
-    public void NeedsRefresh_IgnoresQuotesAndCase()
+    public void Plan_IgnoresQuotesAndCase()
     {
         string registered = StartupTaskDefinition.BuildXml($"\"{Exe.ToUpperInvariant()}\"", UserSid);
 
-        Assert.False(StartupTaskDefinition.NeedsRefresh(registered, Exe));
+        Assert.Equal(StartupTaskAction.None, StartupTaskDefinition.Plan(true, registered, Exe));
     }
 
-    // What "schtasks /Create /SC ONLOGON /TR ..." registered before: a trigger for any user.
+    // What "schtasks /Create /SC ONLOGON /TR ..." registered before: a trigger for any user, which only
+    // admin can replace. It still starts this exe, so retrying without admin on every launch only failed.
     [Fact]
-    public void NeedsRefresh_LegacyAnyUserLogonTrigger_IsTrue()
+    public void Plan_LegacyAnyUserTriggerForThisExe_LeavesItAlone()
     {
         const string legacy = """
             <?xml version="1.0" encoding="UTF-16"?>
@@ -83,15 +86,24 @@ public class StartupTaskDefinitionTests
             </Task>
             """;
 
-        Assert.True(StartupTaskDefinition.NeedsRefresh(legacy, Exe));
+        Assert.Equal(StartupTaskAction.None, StartupTaskDefinition.Plan(true, legacy, Exe));
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("not xml")]
     [InlineData("<Task xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\"/>")]
-    public void NeedsRefresh_UnreadableTask_IsTrue(string xml) =>
-        Assert.True(StartupTaskDefinition.NeedsRefresh(xml, Exe));
+    public void Plan_UnreadableTask_Reregisters(string xml) =>
+        Assert.Equal(StartupTaskAction.Reregister, StartupTaskDefinition.Plan(true, xml, Exe));
+
+    // Regression: with the setting on and the task deleted, nothing registered it again.
+    [Fact]
+    public void Plan_NoTaskWhileTurnedOn_Registers() =>
+        Assert.Equal(StartupTaskAction.Register, StartupTaskDefinition.Plan(true, registeredTaskXml: null, Exe));
+
+    [Fact]
+    public void Plan_NoTaskWhileTurnedOff_DoesNothing() =>
+        Assert.Equal(StartupTaskAction.None, StartupTaskDefinition.Plan(false, registeredTaskXml: null, Exe));
 
     [Theory]
     [InlineData(@"C:\A\app.exe", @"c:\a\APP.EXE", true)]

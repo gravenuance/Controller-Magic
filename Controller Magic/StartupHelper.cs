@@ -27,7 +27,7 @@ namespace ControllerMagic
         // "already running" dialog for the former.
         private const string StartupArg = " " + StartupTaskDefinition.StartupArgument;
 
-        private readonly record struct SchtasksResult(int ExitCode, string Output);
+        private readonly record struct SchtasksResult(int ExitCode, string Output, string Error);
 
         public static async Task<bool> IsEnabledAsync(CancellationToken ct = default) =>
             (await RunSchtasksAsync(ct, "/Query", "/TN", TaskName).ConfigureAwait(false)).ExitCode == 0 || GetRunKeyValue() != null;
@@ -40,9 +40,13 @@ namespace ControllerMagic
             string exe = Application.ExecutablePath;
 
             if (await TryCreateTaskAsync(exe, ct).ConfigureAwait(false))
+            {
                 RemoveRunKeyValue();
-            else
-                SetRunKeyValue(exe);
+                return;
+            }
+
+            AppLog.Default.Warning("StartupHelper: using the Run key for \"Start with Windows\" instead.");
+            SetRunKeyValue(exe);
         }
 
         // A task an older version registered elevated can only be deleted elevated; the delete's
@@ -59,9 +63,10 @@ namespace ControllerMagic
         }
 
         // Runs silently at every launch, so it never prompts for elevation. Moves users of the old
-        // Run-key-only version onto the task, and re-registers a task (or rewrites a Run key)
-        // that no longer starts this exe - e.g. after the exe was moved - so "on" stays true.
-        public static async Task EnsureMigratedAsync(CancellationToken ct = default)
+        // Run-key-only version onto the task, re-registers a task (or rewrites a Run key) that no
+        // longer starts this exe - e.g. after the exe was moved - and registers one that went
+        // missing while the setting is on, so "on" stays true.
+        public static async Task EnsureMigratedAsync(bool runAtStartup, CancellationToken ct = default)
         {
             string exe = Application.ExecutablePath;
 
@@ -76,12 +81,19 @@ namespace ControllerMagic
             }
 
             var query = await RunSchtasksAsync(ct, "/Query", "/TN", TaskName, "/XML").ConfigureAwait(false);
-            if (query.ExitCode != 0 || !StartupTaskDefinition.NeedsRefresh(query.Output, exe))
-                return;
-
-            AppLog.Default.Info("StartupHelper: the startup task doesn't start this exe for this user; re-registering it.");
-            if (!await TryCreateTaskAsync(exe, ct).ConfigureAwait(false))
-                AppLog.Default.Warning("StartupHelper: could not re-register the startup task; leaving the existing one.");
+            switch (StartupTaskDefinition.Plan(runAtStartup, query.ExitCode == 0 ? query.Output : null, exe))
+            {
+                case StartupTaskAction.Register:
+                    AppLog.Default.Info("StartupHelper: \"Start with Windows\" is on but nothing is registered; registering it.");
+                    await EnableAsync(ct).ConfigureAwait(false);
+                    break;
+                case StartupTaskAction.Reregister:
+                    AppLog.Default.Info("StartupHelper: the startup task doesn't start this exe; re-registering it.");
+                    await EnableAsync(ct).ConfigureAwait(false);
+                    break;
+                case StartupTaskAction.None:
+                    break;
+            }
         }
 
         private static string BuildCommand(string exe) => $"\"{exe}\"{StartupArg}";
@@ -115,10 +127,11 @@ namespace ControllerMagic
 
             try
             {
-                if ((await RunSchtasksAsync(ct, "/Create", "/TN", TaskName, "/XML", xmlPath, "/F").ConfigureAwait(false)).ExitCode == 0)
+                var create = await RunSchtasksAsync(ct, "/Create", "/TN", TaskName, "/XML", xmlPath, "/F").ConfigureAwait(false);
+                if (create.ExitCode == 0)
                     return true;
 
-                AppLog.Default.Warning("StartupHelper: scheduled task creation failed; using the Run key instead.");
+                AppLog.Default.Warning($"StartupHelper: schtasks couldn't create the startup task (exit {create.ExitCode}): {create.Error.Trim()}");
                 return false;
             }
             finally
@@ -217,17 +230,17 @@ namespace ControllerMagic
             try
             {
                 using var proc = Process.Start(psi);
-                if (proc == null) return new SchtasksResult(-1, string.Empty);
+                if (proc == null) return new SchtasksResult(-1, string.Empty, string.Empty);
 
                 var output = proc.StandardOutput.ReadToEndAsync(ct);
                 var error = proc.StandardError.ReadToEndAsync(ct);
                 await Task.WhenAll(output, error, proc.WaitForExitAsync(ct)).ConfigureAwait(false);
-                return new SchtasksResult(proc.ExitCode, await output.ConfigureAwait(false));
+                return new SchtasksResult(proc.ExitCode, await output.ConfigureAwait(false), await error.ConfigureAwait(false));
             }
             catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
             {
                 AppLog.Default.Warning("StartupHelper: schtasks invocation failed", ex);
-                return new SchtasksResult(-1, string.Empty);
+                return new SchtasksResult(-1, string.Empty, string.Empty);
             }
         }
 
