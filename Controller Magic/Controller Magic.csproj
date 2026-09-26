@@ -25,9 +25,9 @@
     <Product>Controller Magic</Product>
     <AssemblyTitle>Turn a controller into a mouse, keyboard, and media remote</AssemblyTitle>
     <Description>Turn a controller into a mouse, keyboard, and media remote.</Description>
-    <Version>1.9.0</Version>
-    <FileVersion>1.9.0.0</FileVersion>
-    <AssemblyVersion>1.9.0.0</AssemblyVersion>
+    <Version>1.9.1</Version>
+    <FileVersion>1.9.1.0</FileVersion>
+    <AssemblyVersion>1.9.1.0</AssemblyVersion>
     <!-- A fixed year, not the build clock, so a build from a tag reproduces byte for byte. -->
     <Copyright>Copyright © 2025-2026</Copyright>
     <NeutralLanguage>en</NeutralLanguage>
