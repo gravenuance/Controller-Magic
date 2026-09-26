@@ -135,6 +135,34 @@ public sealed class AppSettingsTests : IDisposable
         Assert.Equal(json, File.ReadAllText(BadBackupPath));
     }
 
+    // Regression: when the correction couldn't be saved, every launch added another identical copy.
+    [Fact]
+    public void Load_SameDamageAgain_KeepsOneCopy()
+    {
+        string json = $$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion}}, "StickDeadZone": 99999}""";
+        WriteSettings(json);
+        CreateStore().Load();
+        WriteSettings(json);
+        _clock.Advance(TimeSpan.FromMinutes(1));
+
+        CreateStore().Load();
+
+        Assert.Equal([BadBackupPath], Directory.GetFiles(_dir, "settings.json.bad-*"));
+    }
+
+    [Fact]
+    public void Load_DifferentDamage_KeepsACopyOfEach()
+    {
+        WriteSettings($$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion}}, "StickDeadZone": 99999}""");
+        CreateStore().Load();
+        WriteSettings($$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion}}, "StickDeadZone": 88888}""");
+        _clock.Advance(TimeSpan.FromMinutes(1));
+
+        CreateStore().Load();
+
+        Assert.Equal(2, Directory.GetFiles(_dir, "settings.json.bad-*").Length);
+    }
+
     [Fact]
     public void Load_OutOfRangeValueWhenBackupFails_LeavesTheFileUntouched()
     {

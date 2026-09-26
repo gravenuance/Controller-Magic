@@ -145,7 +145,7 @@ internal sealed class SettingsStore : IDisposable
         bool lostData = parsed.State == SettingsFileState.Unreadable
             || parsed.DroppedFields.Count > 0
             || parsed.CorrectedFields.Count > 0;
-        if (lostData && !TryBackUp(source, BadCopyPath()))
+        if (lostData && !HasBadCopyOf(json) && !TryBackUp(source, BadCopyPath()))
             return settings;
         if (parsed.State == SettingsFileState.Older && !TryBackUp(source, $"{_path}.v{parsed.FileVersion}.bak"))
             return settings;
@@ -163,6 +163,26 @@ internal sealed class SettingsStore : IDisposable
             TryDeleteLegacyFile(source);
 
         return settings;
+    }
+
+    // Damage seen again (its correction couldn't be saved) is already backed up; one copy is enough.
+    // A failed comparison only costs one extra copy.
+    private bool HasBadCopyOf(string json)
+    {
+        string dir = Path.GetDirectoryName(_path)!;
+        if (!Directory.Exists(dir))
+            return false;
+
+        try
+        {
+            return Directory.EnumerateFiles(dir, $"{Path.GetFileName(_path)}.bad-*")
+                .Any(copy => File.ReadAllText(copy) == json);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log.Warning($"Settings: couldn't compare {_path} with its earlier copies; copying it again", ex);
+            return false;
+        }
     }
 
     private string BadCopyPath() =>

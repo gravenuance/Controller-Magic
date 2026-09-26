@@ -19,6 +19,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   longer picks a keyboard letter.
 - A right stick resting just outside its deadzone (common with stick drift) scrolled a full notch
   every 200ms, faster than a deliberate light push. Scroll speed now rises smoothly from the edge.
+- When a settings correction couldn't be saved, every launch left another identical
+  `settings.json.bad-*` copy. The same damage is now backed up once.
 
 ## [1.9.0] - 2026-09-25
 
