@@ -241,6 +241,57 @@ public sealed class AppSettingsTests : IDisposable
         }
     }
 
+    private const string ZeroedBy190 =
+        """{"SchemaVersion": 1, "StickDeadZone": 0, "ScrollDeadZone": 0, "KeyboardDeadZone": 0, "TouchpadSpeed": 0, "StickSensitivity": 0.03, "WatchedProcessNames": ["mpv"]}""";
+
+    [Fact]
+    public void Parse_Version1ZeroedBy190_RestoresThoseFieldsToDefaults()
+    {
+        var parsed = SettingsStore.Parse(ZeroedBy190);
+        var defaults = new AppSettings();
+
+        Assert.Equal(defaults.StickDeadZone, parsed.Settings.StickDeadZone);
+        Assert.Equal(defaults.ScrollDeadZone, parsed.Settings.ScrollDeadZone);
+        Assert.Equal(defaults.KeyboardDeadZone, parsed.Settings.KeyboardDeadZone);
+        Assert.Equal(defaults.TouchpadSpeed, parsed.Settings.TouchpadSpeed);
+        Assert.Empty(parsed.CorrectedFields);
+    }
+
+    [Fact]
+    public void Parse_Version1ZeroedBy190_KeepsTheOtherFields()
+    {
+        var parsed = SettingsStore.Parse(ZeroedBy190);
+
+        Assert.Equal(0.03f, parsed.Settings.StickSensitivity);
+        Assert.Equal(["mpv"], parsed.Settings.WatchedProcessNames);
+    }
+
+    // Deadzones of 0 are a legal choice; only the touchpad speed of 0 the Settings slider can't produce marks the damage.
+    [Fact]
+    public void Parse_Version1ZeroDeadZonesWithRealTouchpadSpeed_KeepsThem()
+    {
+        var parsed = SettingsStore.Parse(
+            """{"SchemaVersion": 1, "StickDeadZone": 0, "ScrollDeadZone": 0, "KeyboardDeadZone": 0, "TouchpadSpeed": 900}""");
+
+        Assert.Equal(0, parsed.Settings.StickDeadZone);
+        Assert.Equal(0, parsed.Settings.ScrollDeadZone);
+        Assert.Equal(0, parsed.Settings.KeyboardDeadZone);
+        Assert.Equal(900, parsed.Settings.TouchpadSpeed);
+    }
+
+    [Fact]
+    public void Load_Version1ZeroedBy190_WritesTheRepairBackKeepingABackup()
+    {
+        WriteSettings(ZeroedBy190);
+
+        CreateStore().Load();
+
+        Assert.Equal(ZeroedBy190, File.ReadAllText(SettingsPath + ".v1.bak"));
+        var saved = ReadJson(SettingsPath);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, saved.GetProperty("SchemaVersion").GetInt32());
+        Assert.Equal(new AppSettings().ScrollDeadZone, saved.GetProperty("ScrollDeadZone").GetInt32());
+    }
+
     [Fact]
     public void Parse_NullLists_FallBackToDefaultLists()
     {

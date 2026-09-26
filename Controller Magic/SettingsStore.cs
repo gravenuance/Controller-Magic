@@ -39,11 +39,33 @@ internal sealed class SettingsStore : IDisposable
     private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
 
     // Index N upgrades a version-N tree to N+1, on the raw JSON so renamed or reshaped fields
-    // can still be read; version 0 (no SchemaVersion key) to 1 needed no change.
+    // can still be read; version 0 (no SchemaVersion key) to 1 needed no change, 1 to 2 undoes 1.9.0's damage.
     internal static IReadOnlyList<Action<JsonObject>> MigrationSteps { get; } =
     [
         _ => { },
+        RestoreFieldsZeroedBy190,
     ];
+
+    private static readonly string[] FieldsZeroedBy190 =
+    [
+        nameof(AppSettings.StickDeadZone),
+        nameof(AppSettings.ScrollDeadZone),
+        nameof(AppSettings.KeyboardDeadZone),
+        nameof(AppSettings.TouchpadSpeed),
+    ];
+
+    // 1.9.0 validated before its ranges existed and saved these as 0; a touchpad speed of 0 is
+    // below the slider's minimum, so all four at 0 can only be that damage. Removed fields bind to defaults.
+    private static void RestoreFieldsZeroedBy190(JsonObject root)
+    {
+        bool allZero = Array.TrueForAll(FieldsZeroedBy190, name =>
+            root[name] is JsonValue value && value.TryGetValue(out int number) && number == 0);
+        if (!allZero)
+            return;
+
+        foreach (string name in FieldsZeroedBy190)
+            root.Remove(name);
+    }
 
     private readonly string _path;
     private readonly string? _legacyPath;

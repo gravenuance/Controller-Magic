@@ -24,7 +24,7 @@ namespace ControllerMagic
         // just deserialize into as-is. 0 (the C# default for a settings.json with no SchemaVersion
         // key at all - every file written before this version existed) always means "predates
         // versioning" and is migrated forward the same way any older explicit version would be.
-        internal const int CurrentSchemaVersion = 1;
+        internal const int CurrentSchemaVersion = 2;
 
         // Lazy: loading validates against the ranges below, which an initialiser here would run ahead of.
         private static readonly Lazy<AppSettings> LoadedInstance = new(() => SettingsStore.Default.Load());
