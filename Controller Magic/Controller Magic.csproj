@@ -67,7 +67,7 @@
          whether it's looking for that one, so without this present, deserializing HidHide's
          update-check response throws a FileNotFoundException for this assembly. Version pinned to
          exactly what that compiled reference expects (11.3.2.0). -->
-    <PackageReference Include="NJsonSchema.Annotations" Version="11.3.2" />
+    <PackageReference Include="NJsonSchema.Annotations" Version="11.6.1" />
     <!-- Same reason as NJsonSchema.Annotations above: another attribute type
          Nefarius.Vicius.Abstractions references without declaring as a dependency. Confirmed via
          Nefarius.Vicius.Abstractions.dll's own GetReferencedAssemblies() that these two are the
