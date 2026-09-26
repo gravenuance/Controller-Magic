@@ -26,7 +26,10 @@ namespace ControllerMagic
         // versioning" and is migrated forward the same way any older explicit version would be.
         internal const int CurrentSchemaVersion = 1;
 
-        public static AppSettings Instance { get; } = SettingsStore.CreateDefault().Load();
+        // Lazy: loading validates against the ranges below, which an initialiser here would run ahead of.
+        private static readonly Lazy<AppSettings> LoadedInstance = new(() => SettingsStore.Default.Load());
+
+        public static AppSettings Instance => LoadedInstance.Value;
 
         public int SchemaVersion { get; set; }
 

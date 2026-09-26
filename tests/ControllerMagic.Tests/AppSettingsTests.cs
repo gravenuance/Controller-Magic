@@ -38,6 +38,18 @@ public sealed class AppSettingsTests : IDisposable
 
     private static JsonElement ReadJson(string path) => JsonDocument.Parse(File.ReadAllText(path)).RootElement;
 
+    // Regression: Instance loaded before the ranges were initialised, so every range read as 0..0.
+    [Fact]
+    public void Instance_KeepsSavedInRangeValues()
+    {
+        var settings = AppSettings.Instance;
+
+        Assert.Equal(TestEnvironment.StickDeadZone, settings.StickDeadZone);
+        Assert.Equal(TestEnvironment.ScrollDeadZone, settings.ScrollDeadZone);
+        Assert.Equal(TestEnvironment.KeyboardDeadZone, settings.KeyboardDeadZone);
+        Assert.Equal(TestEnvironment.TouchpadSpeed, settings.TouchpadSpeed);
+    }
+
     [Fact]
     public void Load_NoFile_ReturnsDefaultsWithoutWriting()
     {

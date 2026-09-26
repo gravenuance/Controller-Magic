@@ -61,6 +61,40 @@ public class ControllerPollerTests
         Assert.Equal(-1, ControllerPoller.ComputeSector(100, 100, deadZone: 6000));
     }
 
+    // Regression: with the deadzone at 0 the resting stick picked a sector.
+    [Fact]
+    public void ComputeSector_CentredStickWithZeroDeadZone_ReturnsNegativeOne()
+    {
+        Assert.Equal(-1, ControllerPoller.ComputeSector(0, 0, deadZone: 0));
+    }
+
+    // Regression: with the deadzone at 0 the resting stick scrolled down every 200ms.
+    [Fact]
+    public void TryScroll_CentredStickWithZeroDeadZone_DoesNotScroll()
+    {
+        long lastTick = 0;
+
+        Assert.Equal(0, ControllerPoller.TryScroll(0, deadZone: 0, now: 10_000, ref lastTick));
+    }
+
+    [Theory]
+    [InlineData(32767, 120)]
+    [InlineData(-32768, -120)]
+    public void TryScroll_FullDeflection_ScrollsOneNotchInThatDirection(int axis, int expected)
+    {
+        long lastTick = 0;
+
+        Assert.Equal(expected, ControllerPoller.TryScroll(axis, deadZone: 4000, now: 10_000, ref lastTick));
+    }
+
+    [Fact]
+    public void TryScroll_InsideDeadZone_DoesNotScroll()
+    {
+        long lastTick = 0;
+
+        Assert.Equal(0, ControllerPoller.TryScroll(-3999, deadZone: 4000, now: 10_000, ref lastTick));
+    }
+
     [Fact]
     public void ComputeSector_ExactlyAtDeadZoneBoundary_IsNotGated()
     {

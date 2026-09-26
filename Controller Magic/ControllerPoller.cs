@@ -719,7 +719,7 @@ namespace ControllerMagic
             var lx = pad.LeftThumbX;
             var ly = pad.LeftThumbY;
             var mag = StickMagnitude(lx, ly);
-            if (mag < StickDeadZone)
+            if (IsInsideDeadZone(mag, StickDeadZone))
             {
                 _dxRemainder = 0;
                 _dyRemainder = 0;
@@ -758,6 +758,9 @@ namespace ControllerMagic
 
             HandleScroll(pad.RightThumbY, pad.RightThumbX);
         }
+
+        // A centred stick is at rest even with the deadzone at 0; otherwise it scrolls or picks a sector.
+        internal static bool IsInsideDeadZone(double magnitude, int deadZone) => magnitude == 0 || magnitude < deadZone;
 
         // In double: a fully deflected corner (-32768, -32768) overflows int to a negative sum.
         internal static double StickMagnitude(short x, short y) => Math.Sqrt(((double)x * x) + ((double)y * y));
@@ -806,23 +809,23 @@ namespace ControllerMagic
         private void HandleScroll(short ry, short rx)
         {
             long now = Environment.TickCount64;
-            int vertical = TryScroll(ry, now, ref _lastScrollTick);
+            int vertical = TryScroll(ry, ScrollDeadZone, now, ref _lastScrollTick);
             if (vertical != 0)
                 _input.MouseWheelVertical(vertical);
 
-            int horizontal = TryScroll(rx, now, ref _lastHorizontalScrollTick);
+            int horizontal = TryScroll(rx, ScrollDeadZone, now, ref _lastHorizontalScrollTick);
             if (horizontal != 0)
                 _input.MouseWheelHorizontal(horizontal);
         }
 
         // Returns the wheel delta to send now, or 0.
-        private static int TryScroll(int axisValue, long now, ref long lastTick)
+        internal static int TryScroll(int axisValue, int deadZone, long now, ref long lastTick)
         {
             int abs = axisValue == short.MinValue ? short.MaxValue : Math.Abs(axisValue);
-            if (abs < ScrollDeadZone)
+            if (IsInsideDeadZone(abs, deadZone))
                 return 0;
 
-            double norm = (abs - ScrollDeadZone) / (32767.0 - ScrollDeadZone);
+            double norm = (abs - deadZone) / (32767.0 - deadZone);
             if (norm < 0) norm = 0;
             if (norm > 1) norm = 1;
 
@@ -1119,15 +1122,10 @@ namespace ControllerMagic
         // pure-core-plus-stateful-wrapper split as ComputeHoldRamp below.
         internal static int ComputeSector(short lx, short ly, int deadZone)
         {
-            long x = lx;
-            long y = ly;
-
-            // In long: a fully deflected corner overflows int (see StickMagnitude).
-            long magSq = (x * x) + (y * y);
-            if (magSq < (long)deadZone * deadZone)
+            if (IsInsideDeadZone(StickMagnitude(lx, ly), deadZone))
                 return -1;
 
-            double angleRad = Math.Atan2(y, x);
+            double angleRad = Math.Atan2(ly, lx);
             double angleDeg = angleRad * (180.0 / Math.PI);
 
             // Now angleDeg is standard: 0° = right, 90° = up, 180° = left, 270° = down

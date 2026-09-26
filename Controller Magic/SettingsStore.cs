@@ -76,6 +76,9 @@ internal sealed class SettingsStore : IDisposable
         TimeProvider.System,
         AppLog.Default);
 
+    // Settable only so the test run can point AppSettings.Instance away from the user's real file.
+    internal static SettingsStore Default { get; set; } = CreateDefault();
+
     // True when the file on disk must be left alone for this session, e.g. it's from a newer build.
     internal bool IsReadOnly { get; private set; }
 

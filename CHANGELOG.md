@@ -8,6 +8,12 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Fixed
+- Starting 1.9.0 reset the stick, scroll and keyboard deadzones and the touchpad speed to 0 in
+  settings.json, which made the page scroll down on its own. Saved values now load unchanged.
+- With a deadzone set to 0, a resting right stick no longer scrolls and a resting left stick no
+  longer picks a keyboard letter.
+
 ## [1.9.0] - 2026-09-25
 
 ### Changed
