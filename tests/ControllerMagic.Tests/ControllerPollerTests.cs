@@ -87,6 +87,19 @@ public class ControllerPollerTests
         Assert.Equal(expected, ControllerPoller.TryScroll(axis, deadZone: 4000, now: 10_000, ref lastTick));
     }
 
+    // Regression: just past the deadzone (where drift sits) the delta jumped to a full notch.
+    [Fact]
+    public void TryScroll_JustPastDeadZone_ScrollsNoMoreThanAFurtherPush()
+    {
+        long nearTick = 0;
+        long furtherTick = 0;
+
+        int near = ControllerPoller.TryScroll(-4001, deadZone: 4000, now: 10_000, ref nearTick);
+        int further = ControllerPoller.TryScroll(-6000, deadZone: 4000, now: 10_000, ref furtherTick);
+
+        Assert.InRange(near, further, -1);
+    }
+
     [Fact]
     public void TryScroll_InsideDeadZone_DoesNotScroll()
     {

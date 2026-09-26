@@ -17,6 +17,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   `settings.json.v1.bak`). A settings file from this version makes 1.9.0 fall back to defaults.
 - With a deadzone set to 0, a resting right stick no longer scrolls and a resting left stick no
   longer picks a keyboard letter.
+- A right stick resting just outside its deadzone (common with stick drift) scrolled a full notch
+  every 200ms, faster than a deliberate light push. Scroll speed now rises smoothly from the edge.
 
 ## [1.9.0] - 2026-09-25
 

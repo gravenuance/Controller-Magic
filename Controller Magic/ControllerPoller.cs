@@ -835,8 +835,8 @@ namespace ControllerMagic
 
             lastTick = now;
 
-            int delta = (int)(WheelNotch * norm);
-            if (delta == 0) delta = WheelNotch;
+            // At least one unit: a full-notch floor made drift just past the deadzone the fastest scroll.
+            int delta = Math.Max(1, (int)(WheelNotch * norm));
 
             return axisValue > 0 ? delta : -delta;
         }
