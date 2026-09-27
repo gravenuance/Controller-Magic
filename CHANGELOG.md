@@ -8,6 +8,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-09-27
+
 ### Changed
 - Settings is back to its earlier height: each slider's name, slider and value now share one
   line, which makes room for 1.10.0's "Turn off when idle" card.
