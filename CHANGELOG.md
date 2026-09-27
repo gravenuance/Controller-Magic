@@ -8,17 +8,6 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
-### Changed
-- The lightbar turns red on low battery while controlling the mouse; the on-screen keyboard keeps
-  it green. A DualSense's white LEDs under the touchpad no longer show the battery and stay off.
-- While a fullscreen game has the controller, the app leaves the lightbar to the game instead of
-  setting it blue.
-
-### Fixed
-- With "Use HidHide" on, every switch to hiding the controller logged an error while the app
-  added itself to HidHide's allowed apps. The HidHide library is updated to 3.5.0-pre001, a
-  pre-release that fixes this; it moves to 3.5.0 once that's released.
-
 ## [1.10.0] - 2026-09-27
 
 ### Added
@@ -26,11 +15,20 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   Steam before "Use HidHide" hid it from Steam. Settings has a "Turn off when idle" slider, up to
   an hour or Never. A controller on USB stays on.
 
+### Changed
+- The lightbar turns red on low battery while controlling the mouse; the on-screen keyboard keeps
+  it green. A DualSense's white LEDs under the touchpad no longer show the battery and stay off.
+- While a fullscreen game has the controller, the app leaves the lightbar to the game instead of
+  setting it blue.
+
 ### Fixed
 - Since 1.9.0, a slight push of a stick could move the cursor the wrong way (upwards when pushed
   right, for example), because Windows placed each step one pixel off. The cursor now goes
   exactly where the stick points. It still keeps the screen from dimming or sleeping, but no
   longer counts as mouse use for a screensaver or an "Away" status.
+- With "Use HidHide" on, every switch to hiding the controller logged an error while the app
+  added itself to HidHide's allowed apps. The HidHide library is updated to 3.5.0-pre001, a
+  pre-release that fixes this; it moves to 3.5.0 once that's released.
 
 ## [1.9.2] - 2026-09-26
 
