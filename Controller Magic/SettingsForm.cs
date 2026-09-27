@@ -69,6 +69,7 @@ namespace ControllerMagic
 
         private readonly ControllerPoller _poller;
         private readonly System.Windows.Forms.Timer _statusTimer;
+        private readonly ToolTip _toolTip = new();
         private readonly UiOperationRunner _operations = new(AppLog.Default);
 
         // Each control's refresh for when the kept-alive window is shown again.
@@ -582,26 +583,30 @@ namespace ControllerMagic
             };
             toggle.Location = new Point(_card.Width - CardPadding - toggle.Width, _cardY);
 
-            _card.Controls.Add(title);
-            _card.Controls.Add(toggle);
-            _cardY += toggle.Height + 2;
-
+            // Status shares the toggle's row, bounded to the gap between name and switch; a long one
+            // is cut with an ellipsis and shown whole in a tooltip rather than running under the switch.
+            int statusX = CardPadding + title.PreferredWidth + VizGap;
             var status = new Label
             {
                 Text = "Checking...",
-                AutoSize = true,
-                Location = new Point(CardPadding, _cardY),
+                AutoSize = false,
+                AutoEllipsis = true,
+                TextAlign = ContentAlignment.MiddleRight,
+                Bounds = new Rectangle(statusX, _cardY, Math.Max(0, toggle.Left - VizGap - statusX), toggle.Height),
                 Font = Theme.CaptionFont,
                 ForeColor = Theme.Muted,
-                MaximumSize = new Size(_card.Width - CardPadding * 2, 0),
             };
+            _card.Controls.Add(title);
             _card.Controls.Add(status);
-            _cardY += 18;
+            _card.Controls.Add(toggle);
+            _cardY += toggle.Height + 2;
 
             void ShowStatus(string text)
             {
-                if (!status.IsDisposed)
-                    status.Text = text;
+                if (status.IsDisposed)
+                    return;
+                status.Text = text;
+                _toolTip.SetToolTip(status, text);
             }
 
             toggle.Toggled += (_, __) => _ = _operations.RunAsync(

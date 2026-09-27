@@ -11,6 +11,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 ### Changed
 - Settings is back to its earlier height: each slider's name, slider and value now share one
   line, which makes room for 1.10.0's "Turn off when idle" card.
+- The HidHide status now shows beside its switch instead of on a line of its own. A message too
+  long for that space is cut short and shown in full when you point at it.
 
 ## [1.10.0] - 2026-09-27
 

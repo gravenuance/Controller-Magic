@@ -13,6 +13,7 @@ namespace ControllerMagic
             if (disposing)
             {
                 _statusTimer.Dispose();
+                _toolTip.Dispose();
                 _operations.Dispose();
             }
             base.Dispose(disposing);
