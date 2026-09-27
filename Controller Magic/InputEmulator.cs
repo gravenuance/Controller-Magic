@@ -48,6 +48,9 @@ namespace ControllerMagic
         Rectangle VirtualScreen { get; }
 
         void SetCursorPosition(Point position);
+
+        // Resets Windows' display and sleep idle timers, as real input would.
+        void KeepDisplayAwake();
     }
 
     internal sealed class Win32DesktopInput : IDesktopInput
@@ -73,6 +76,12 @@ namespace ControllerMagic
         [DllImport("user32.dll")]
         private static extern int GetSystemMetrics(int nIndex);
 
+        private const uint ES_SYSTEM_REQUIRED = 0x00000001;
+        private const uint ES_DISPLAY_REQUIRED = 0x00000002;
+
+        [DllImport("kernel32.dll")]
+        private static extern uint SetThreadExecutionState(uint esFlags);
+
         public uint Send(ReadOnlySpan<INPUT> inputs) =>
             inputs.IsEmpty ? 0 : SendInput((uint)inputs.Length, ref MemoryMarshal.GetReference(inputs), InputSize);
 
@@ -83,24 +92,31 @@ namespace ControllerMagic
             GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN));
 
         public void SetCursorPosition(Point position) => SetCursorPos(position.X, position.Y);
+
+        private bool _keepAwakeFailureLogged;
+
+        // Without ES_CONTINUOUS this is a one-off reset, so nothing is left held when moves stop.
+        public void KeepDisplayAwake()
+        {
+            if (SetThreadExecutionState(ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED) != 0 || _keepAwakeFailureLogged)
+                return;
+
+            _keepAwakeFailureLogged = true;
+            AppLog.Default.Warning("InputEmulator: SetThreadExecutionState failed; the display may dim while the stick moves the cursor");
+        }
     }
 
     internal sealed class InputEmulator
     {
         internal const uint INPUT_MOUSE = 0;
         internal const uint INPUT_KEYBOARD = 1;
-        internal const uint MOUSEEVENTF_MOVE = 0x0001;
         internal const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
         internal const uint MOUSEEVENTF_LEFTUP = 0x0004;
         internal const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
         internal const uint MOUSEEVENTF_RIGHTUP = 0x0010;
         internal const uint MOUSEEVENTF_WHEEL = 0x0800;
         internal const uint MOUSEEVENTF_HWHEEL = 0x1000;
-        internal const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
-        internal const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
         internal const uint KEYEVENTF_KEYUP = 0x0002;
-
-        private const int AbsoluteScale = 65536;
 
         private readonly IDesktopInput _desktop;
         private bool _leftIsDown;
@@ -119,6 +135,8 @@ namespace ControllerMagic
         // Absolute, because relative moves go through "Enhance pointer precision" acceleration on
         // top of the stick's own curve. SetCursorPos stays as the fallback where UIPI drops the
         // input (an elevated window in front), so the cursor still moves there as before.
+        // SetCursorPos, not an absolute SendInput: Windows maps absolute coordinates back to pixels
+        // 1 px short most of the time, and each move starts where the last one landed.
         public void MoveMouse(int dx, int dy)
         {
             var screen = _desktop.VirtualScreen;
@@ -126,22 +144,11 @@ namespace ControllerMagic
                 return;
 
             var cursor = _desktop.CursorPosition;
-            var target = new Point(
+            _desktop.SetCursorPosition(new Point(
                 Math.Clamp(cursor.X + dx, screen.Left, screen.Right - 1),
-                Math.Clamp(cursor.Y + dy, screen.Top, screen.Bottom - 1));
-
-            var (x, y) = ToAbsolute(target, screen);
-            if (!SendMouse(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, dx: x, dy: y))
-                _desktop.SetCursorPosition(target);
+                Math.Clamp(cursor.Y + dy, screen.Top, screen.Bottom - 1)));
+            _desktop.KeepDisplayAwake();
         }
-
-        // Windows maps a normalised coordinate n to pixel floor(n * size / 65536); rounding up here
-        // lands on the exact pixel, so a 1 px step at slow stick speed is never rounded away.
-        internal static (int X, int Y) ToAbsolute(Point pixel, Rectangle screen) =>
-            (Normalise(pixel.X - screen.Left, screen.Width), Normalise(pixel.Y - screen.Top, screen.Height));
-
-        private static int Normalise(int offset, int size) =>
-            (int)((((long)offset * AbsoluteScale) + size - 1) / size);
 
         // Committed only once Windows accepts it: UIPI drops input aimed at an elevated window, and
         // the caller re-asserts the wanted state every tick, so a dropped press or release is retried.

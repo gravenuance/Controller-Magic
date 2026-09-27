@@ -23,4 +23,8 @@ internal sealed class FakeDesktopInput : IDesktopInput
     }
 
     public void SetCursorPosition(Point position) => CursorPositionsSet.Add(position);
+
+    public int KeepDisplayAwakeCalls { get; private set; }
+
+    public void KeepDisplayAwake() => KeepDisplayAwakeCalls++;
 }

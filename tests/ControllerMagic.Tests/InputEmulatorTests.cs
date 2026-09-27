@@ -97,22 +97,17 @@ public class InputEmulatorTests
         Assert.Equal(IntPtr.Size == 8 ? 40 : 28, System.Runtime.InteropServices.Marshal.SizeOf<INPUT>());
     }
 
-    // Windows' mapping of a normalised absolute coordinate back to a pixel.
-    private static Point PixelFor(INPUT move, Rectangle screen) => new(
-        screen.Left + (int)((long)move.U.mi.dx * screen.Width / 65536),
-        screen.Top + (int)((long)move.U.mi.dy * screen.Height / 65536));
-
+    // Regression: absolute SendInput moves landed 1px up/left most of the time, and each move
+    // started from there, so a slight push right crept upwards.
     [Fact]
-    public void MoveMouse_SendsOneAbsoluteMoveToTheCursorPlusTheStep()
+    public void MoveMouse_PutsTheCursorExactlyOnTheCursorPlusTheStep()
     {
         _sink.CursorPosition = new Point(500, 300);
 
         _input.MoveMouse(1, -1);
 
-        var move = Assert.Single(Assert.Single(_sink.Batches));
-        AssertMouse(move, InputEmulator.MOUSEEVENTF_MOVE | InputEmulator.MOUSEEVENTF_ABSOLUTE | InputEmulator.MOUSEEVENTF_VIRTUALDESK);
-        Assert.Equal(new Point(501, 299), PixelFor(move, _sink.VirtualScreen));
-        Assert.Empty(_sink.CursorPositionsSet);
+        Assert.Equal([new Point(501, 299)], _sink.CursorPositionsSet);
+        Assert.Empty(_sink.Batches);
     }
 
     [Fact]
@@ -123,38 +118,15 @@ public class InputEmulatorTests
 
         _input.MoveMouse(50, -50);
 
-        var move = Assert.Single(Assert.Single(_sink.Batches));
-        Assert.Equal(new Point(1919, -200), PixelFor(move, _sink.VirtualScreen));
+        Assert.Equal([new Point(1919, -200)], _sink.CursorPositionsSet);
     }
 
     [Fact]
-    public void MoveMouse_InputRejected_SetsTheCursorDirectly()
+    public void MoveMouse_KeepsTheDisplayAwake()
     {
-        _sink.Accept = _ => 0;
-        _sink.CursorPosition = new Point(10, 10);
-
         _input.MoveMouse(3, 4);
 
-        Assert.Equal([new Point(13, 14)], _sink.CursorPositionsSet);
-    }
-
-    [Theory]
-    [InlineData(0, 1920)]
-    [InlineData(-1920, 5760)]
-    [InlineData(-2560, 7680)]
-    [InlineData(100, 1366)]
-    public void ToAbsolute_EveryPixelMapsBackToItself(int left, int width)
-    {
-        var screen = new Rectangle(left, 0, width, 1);
-
-        for (int x = screen.Left; x < screen.Right; x++)
-        {
-            var (nx, _) = InputEmulator.ToAbsolute(new Point(x, 0), screen);
-            var move = new INPUT();
-            move.U.mi.dx = nx;
-
-            Assert.Equal(x, PixelFor(move, screen).X);
-        }
+        Assert.Equal(1, _sink.KeepDisplayAwakeCalls);
     }
 
     private static void AssertKey(INPUT input, ushort vk, bool up)

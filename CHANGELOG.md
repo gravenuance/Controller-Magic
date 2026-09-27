@@ -8,6 +8,12 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Fixed
+- Since 1.9.0, a slight push of a stick could move the cursor the wrong way (upwards when pushed
+  right, for example), because Windows placed each step one pixel off. The cursor now goes
+  exactly where the stick points. It still keeps the screen from dimming or sleeping, but no
+  longer counts as mouse use for a screensaver or an "Away" status.
+
 ## [1.9.2] - 2026-09-26
 
 ### Fixed
