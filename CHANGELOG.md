@@ -8,6 +8,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-27
+
 ### Added
 - A wireless PlayStation controller now switches off after 15 minutes unused, as it did with
   Steam before "Use HidHide" hid it from Steam. Settings has a "Turn off when idle" slider, up to
