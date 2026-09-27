@@ -8,6 +8,11 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Fixed
+- With "Use HidHide" on, every switch to hiding the controller logged an error while the app
+  added itself to HidHide's allowed apps. The HidHide library is updated to 3.5.0-pre001, a
+  pre-release that fixes this; it moves to 3.5.0 once that's released.
+
 ## [1.10.0] - 2026-09-27
 
 ### Added

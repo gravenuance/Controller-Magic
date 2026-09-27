@@ -4,9 +4,9 @@
     "net10.0-windows7.0": {
       "Nefarius.Drivers.HidHide": {
         "type": "Direct",
-        "requested": "[3.4.0, )",
-        "resolved": "3.4.0",
-        "contentHash": "nlPmPQKtDK71zL+rfIbKyUKbMgxnOfPs1P82yqKKfv8NqUQbJKcUrYtBoqmg8oNH/pEeEojBcXnC4SmWUoJajQ==",
+        "requested": "[3.5.0-pre001, )",
+        "resolved": "3.5.0-pre001",
+        "contentHash": "RKZa9m7yZ74k6M5SgAd0Rc2i8DqZ1xJ/joPr4jl391eStV5TFz/AG4wnUyQcnQOKkjETKQcVozgkr8ZojwxvhA==",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "10.0.8",
           "Nefarius.Utilities.DeviceManagement": "5.2.0",
