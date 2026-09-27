@@ -60,6 +60,13 @@ namespace ControllerMagic
         private const int VizHeight = 34;
         private const int VizGap = 10;
 
+        // Row height is the preview's, so every slider row is one line of the same height.
+        private const int SliderRowStep = VizHeight + 4;
+
+        private sealed record SliderRow(CardPanel Card, int Y, Label Name, Slider Slider, Label Readout, Control? Viz, string WidestReadout);
+
+        private readonly List<SliderRow> _sliderRows = [];
+
         private readonly ControllerPoller _poller;
         private readonly System.Windows.Forms.Timer _statusTimer;
         private readonly UiOperationRunner _operations = new(AppLog.Default);
@@ -195,6 +202,8 @@ namespace ControllerMagic
                 () => AppSettings.Instance.StreamingServiceNames,
                 items => AppSettings.Instance.StreamingServiceNames = items);
             EndCard();
+
+            LayoutSliderRows();
 
             // Last in tab order, so first focus lands on a setting rather than on Close.
             titleBar.TabIndex = Controls.Count;
@@ -372,15 +381,10 @@ namespace ControllerMagic
         {
             if (_card == null) throw new InvalidOperationException("AddSlider called outside a card");
 
-            int contentWidth = _card.Width - CardPadding * 2;
-            bool hasViz = curveFn != null || gaugeFraction != null;
-            int sliderWidth = hasViz ? contentWidth - VizWidth - VizGap : contentWidth;
-
             var nameLabel = new Label
             {
                 Text = name,
                 AutoSize = true,
-                Location = new Point(CardPadding, _cardY),
                 Font = Theme.UiFontBold,
                 ForeColor = Theme.Ink,
             };
@@ -389,22 +393,16 @@ namespace ControllerMagic
             var readout = new Label
             {
                 AutoSize = false,
-                Size = new Size(100, 16),
-                Location = new Point(_card.Width - CardPadding - 100, _cardY),
                 TextAlign = ContentAlignment.MiddleRight,
                 Font = Theme.MonoFont,
                 ForeColor = Theme.Accent,
             };
             _card.Controls.Add(readout);
 
-            _cardY += 20;
-
             var slider = new Slider
             {
                 Minimum = range.Min,
                 Maximum = range.Max,
-                Location = new Point(CardPadding, _cardY + 3),
-                Size = new Size(sliderWidth, 20),
                 TabIndex = _nextTabIndex++,
                 AccessibleName = name,
             };
@@ -412,20 +410,20 @@ namespace ControllerMagic
 
             CurvePreview? curve = null;
             RadialGauge? gauge = null;
-            var vizLocation = new Point(CardPadding + sliderWidth + VizGap, _cardY - 4);
-            var vizSize = new Size(VizWidth, VizHeight);
             if (curveFn != null)
             {
-                curve = new CurvePreview { Location = vizLocation, Size = vizSize };
+                curve = new CurvePreview { Size = new Size(VizWidth, VizHeight) };
                 _card.Controls.Add(curve);
             }
             else if (gaugeFraction != null)
             {
-                gauge = new RadialGauge { Location = vizLocation, Size = vizSize };
+                gauge = new RadialGauge { Size = new Size(VizWidth, VizHeight) };
                 _card.Controls.Add(gauge);
             }
 
-            _cardY += 32;
+            string widestReadout = WiderText(formatReadout(range.Min), formatReadout(range.Max), readout.Font);
+            _sliderRows.Add(new SliderRow(_card, _cardY, nameLabel, slider, readout, (Control?)curve ?? gauge, widestReadout));
+            _cardY += SliderRowStep;
 
             var setting = new SliderSetting
             {
@@ -444,6 +442,31 @@ namespace ControllerMagic
             slider.Scroll += (_, __) => setting.Commit();
             _onShown.Add(setting.RefreshFromSettings);
         }
+
+        private static string WiderText(string a, string b, Font font) =>
+            TextRenderer.MeasureText(a, font).Width >= TextRenderer.MeasureText(b, font).Width ? a : b;
+
+        // One pass once every row exists, so names, sliders and values line up across all cards.
+        private void LayoutSliderRows()
+        {
+            if (_sliderRows.Count == 0)
+                return;
+
+            int labelWidth = _sliderRows.Max(row => row.Name.PreferredWidth);
+            int readoutWidth = _sliderRows.Max(row => TextRenderer.MeasureText(row.WidestReadout, row.Readout.Font).Width);
+
+            foreach (var row in _sliderRows)
+            {
+                var columns = SliderRowLayout.Compute(
+                    CardPadding, row.Card.Width - CardPadding * 2, labelWidth, readoutWidth, VizWidth, VizGap);
+                row.Name.Location = new Point(columns.LabelX, CentredIn(row.Y, row.Name.PreferredHeight));
+                row.Slider.Bounds = new Rectangle(columns.SliderX, CentredIn(row.Y, 20), columns.SliderWidth, 20);
+                row.Readout.Bounds = new Rectangle(columns.ReadoutX, CentredIn(row.Y, 16), columns.ReadoutWidth, 16);
+                row.Viz?.Location = new Point(columns.VizX, row.Y);
+            }
+        }
+
+        private static int CentredIn(int rowY, int height) => rowY + (VizHeight - height) / 2;
 
         private void AddStartupToggle()
         {
