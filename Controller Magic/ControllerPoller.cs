@@ -554,7 +554,11 @@ namespace ControllerMagic
         {
             bool blockedFullscreen = FullscreenHelper.IsBlockedFullscreen();
             _passthrough.SetFullscreenSuspended(blockedFullscreen);
-            sdlPadReader.SetLightbar(ControllerLights.ColorFor(ControllerLights.ComputeMode(blockedFullscreen, _keyboardMode)));
+            var mode = ControllerLights.ComputeMode(blockedFullscreen, _keyboardMode, sdlPadReader.Battery);
+            if (ControllerLights.LightbarFor(mode) is { } lightbar)
+                sdlPadReader.SetLightbar(lightbar);
+            else
+                sdlPadReader.ReleaseLightbar();
 
             if (blockedFullscreen)
             {
@@ -568,7 +572,7 @@ namespace ControllerMagic
             // opened) current every tick, independent of which source ends up supplying the
             // frame below - see the comment on PumpEvents() for why that independence matters.
             sdlPadReader.PumpEvents();
-            sdlPadReader.SetPlayerLights(ControllerLights.PlayerLightsFor(sdlPadReader.Battery));
+            sdlPadReader.SetPlayerLights(ControllerLights.PlayerLightsOff);
 
             PadSource source = _xinput.TryReadAny(out var pad, _passthrough.VirtualPadXInputSlots) ? PadSource.XInput
                 : sdlPadReader.TryGetLatest(out pad) ? PadSource.Sdl

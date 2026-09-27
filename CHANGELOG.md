@@ -8,6 +8,12 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Changed
+- The lightbar turns red on low battery while controlling the mouse; the on-screen keyboard keeps
+  it green. A DualSense's white LEDs under the touchpad no longer show the battery and stay off.
+- While a fullscreen game has the controller, the app leaves the lightbar to the game instead of
+  setting it blue.
+
 ### Fixed
 - With "Use HidHide" on, every switch to hiding the controller logged an error while the app
   added itself to HidHide's allowed apps. The HidHide library is updated to 3.5.0-pre001, a

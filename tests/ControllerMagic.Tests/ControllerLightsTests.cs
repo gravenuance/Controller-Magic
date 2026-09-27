@@ -1,4 +1,3 @@
-using System.Numerics;
 using ControllerMagic;
 using Xunit;
 
@@ -6,30 +5,47 @@ namespace ControllerMagic.Tests;
 
 public class ControllerLightsTests
 {
+    private static readonly ControllerMode[] LitModes = [ControllerMode.Mouse, ControllerMode.Keyboard, ControllerMode.LowBattery];
+
     [Theory]
-    [InlineData(false, false, nameof(ControllerMode.Mouse))]
-    [InlineData(false, true, nameof(ControllerMode.Keyboard))]
-    [InlineData(true, false, nameof(ControllerMode.Suspended))]
-    [InlineData(true, true, nameof(ControllerMode.Suspended))]
-    public void ComputeMode_FullscreenSuspensionWinsOverKeyboardMode(bool blockedFullscreen, bool keyboardMode, string expected)
+    [InlineData(false, false, nameof(BatteryLevel.Medium), nameof(ControllerMode.Mouse))]
+    [InlineData(false, true, nameof(BatteryLevel.Medium), nameof(ControllerMode.Keyboard))]
+    [InlineData(true, false, nameof(BatteryLevel.Medium), nameof(ControllerMode.Suspended))]
+    [InlineData(true, true, nameof(BatteryLevel.Medium), nameof(ControllerMode.Suspended))]
+    [InlineData(false, false, nameof(BatteryLevel.Low), nameof(ControllerMode.LowBattery))]
+    [InlineData(false, false, nameof(BatteryLevel.Empty), nameof(ControllerMode.LowBattery))]
+    [InlineData(false, true, nameof(BatteryLevel.Low), nameof(ControllerMode.Keyboard))]
+    [InlineData(true, false, nameof(BatteryLevel.Empty), nameof(ControllerMode.Suspended))]
+    [InlineData(false, false, nameof(BatteryLevel.Full), nameof(ControllerMode.Mouse))]
+    [InlineData(false, false, nameof(BatteryLevel.Wired), nameof(ControllerMode.Mouse))]
+    [InlineData(false, false, nameof(BatteryLevel.Unknown), nameof(ControllerMode.Mouse))]
+    public void ComputeMode_GameThenKeyboardThenLowBatteryThenMouse(bool blockedFullscreen, bool keyboardMode, string battery, string expected)
     {
-        Assert.Equal(expected, ControllerLights.ComputeMode(blockedFullscreen, keyboardMode).ToString());
+        var mode = ControllerLights.ComputeMode(blockedFullscreen, keyboardMode, Enum.Parse<BatteryLevel>(battery));
+
+        Assert.Equal(expected, mode.ToString());
     }
 
+    // The game sets its own colour while it has the pad.
     [Fact]
-    public void ColorFor_EveryModeHasItsOwnColour()
-    {
-        var colors = Enum.GetValues<ControllerMode>().Select(ControllerLights.ColorFor).ToList();
+    public void LightbarFor_Suspended_LeavesTheLightbarAlone() =>
+        Assert.Null(ControllerLights.LightbarFor(ControllerMode.Suspended));
 
+    [Fact]
+    public void LightbarFor_EveryLitModeHasItsOwnColour()
+    {
+        var colors = LitModes.Select(ControllerLights.LightbarFor).ToList();
+
+        Assert.DoesNotContain(null, colors);
         Assert.Equal(colors.Count, colors.Distinct().Count());
     }
 
     [Fact]
-    public void ColorFor_EveryModeColourIsFullySaturated_SoTheLightbarDoesNotWashItOutToWhite()
+    public void LightbarFor_EveryColourIsFullySaturated_SoTheLightbarDoesNotWashItOutToWhite()
     {
-        foreach (var mode in Enum.GetValues<ControllerMode>())
+        foreach (var mode in LitModes)
         {
-            var c = ControllerLights.ColorFor(mode);
+            var c = ControllerLights.LightbarFor(mode)!.Value;
             Assert.True(Math.Min(c.R, Math.Min(c.G, c.B)) == 0, $"{mode} colour {c} has no channel off");
         }
     }
@@ -37,10 +53,10 @@ public class ControllerLightsTests
     [Theory]
     [InlineData(nameof(ControllerMode.Mouse), 0xFF, 0x60, 0x00)]
     [InlineData(nameof(ControllerMode.Keyboard), 0x00, 0xFF, 0x40)]
-    [InlineData(nameof(ControllerMode.Suspended), 0x00, 0x00, 0x40)]
-    public void ColorFor_KeepsEachModesHueButNoBrighterThanSdlsOwnColours(string mode, int r, int g, int b)
+    [InlineData(nameof(ControllerMode.LowBattery), 0xFF, 0x00, 0x00)]
+    public void LightbarFor_KeepsEachModesHueButNoBrighterThanSdlsOwnColours(string mode, int r, int g, int b)
     {
-        var c = ControllerLights.ColorFor(Enum.Parse<ControllerMode>(mode));
+        var c = ControllerLights.LightbarFor(Enum.Parse<ControllerMode>(mode))!.Value;
 
         Assert.Equal(0x40, Math.Max(c.R, Math.Max(c.G, c.B)));
         Assert.Equal(Color.FromArgb(r, g, b).GetHue(), c.GetHue(), 1.5f);
@@ -54,18 +70,7 @@ public class ControllerLightsTests
         Assert.Equal(Color.FromArgb(0x40, 0x20, 0x10).ToArgb(), c.ToArgb());
     }
 
-    [Theory]
-    [InlineData(nameof(BatteryLevel.Unknown), 0)]
-    [InlineData(nameof(BatteryLevel.Empty), 1)]
-    [InlineData(nameof(BatteryLevel.Low), 2)]
-    [InlineData(nameof(BatteryLevel.Medium), 3)]
-    [InlineData(nameof(BatteryLevel.Full), 5)]
-    [InlineData(nameof(BatteryLevel.Wired), 5)]
-    public void PlayerLightsFor_MoreChargeLightsMoreOfTheFiveLeds(string level, int expectedLitLeds)
-    {
-        byte mask = ControllerLights.PlayerLightsFor(Enum.Parse<BatteryLevel>(level));
-
-        Assert.Equal(expectedLitLeds, BitOperations.PopCount(mask));
-        Assert.Equal(0, mask & ~0x1F);
-    }
+    [Fact]
+    public void PlayerLightsOff_LightsNoneOfTheFiveLeds() =>
+        Assert.Equal(0, ControllerLights.PlayerLightsOff);
 }

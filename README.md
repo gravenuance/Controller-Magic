@@ -26,8 +26,9 @@ remote outside of fullscreen games — a background tray app, not a window you k
   etc.) or Edge, the D-pad becomes arrow keys, the shoulder buttons skip to the next/previous
   episode, and X presses "Skip Intro".
 - **Controller lights** — on a DualSense or DualShock 4, the lightbar shows orange for mouse
-  control, green while the on-screen keyboard is open, and dim blue while standing down for a
-  fullscreen game. On a DualSense the five LEDs under the touchpad show the battery level.
+  control, green while the on-screen keyboard is open, and red for mouse control on low battery.
+  A fullscreen game keeps its own lightbar colour. A DualSense's white LEDs under the touchpad
+  stay off.
 - **Bluetooth range guard** — if a PlayStation controller goes quiet (usually from being too far
   away), it is treated as let go rather than stuck on its last input, so the cursor doesn't drift
   off and no button stays held.

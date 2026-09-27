@@ -181,6 +181,9 @@ internal sealed class Sdl2PadReader : IDisposable
     private bool RetryOpenDue() => _openFailedAt is { } failedAt && _clock.GetElapsedTime(failedAt) >= RetryOpenAfter;
 
     // Sent only when the colour changes; a pad without a lightbar is simply skipped.
+    // Something else sets the lightbar for a while (a fullscreen game); SetLightbar sends again after.
+    public void ReleaseLightbar() => _appliedLightbar = null;
+
     public void SetLightbar(Color color)
     {
         if (_controller == IntPtr.Zero || _appliedLightbar == color)
@@ -223,7 +226,7 @@ internal sealed class Sdl2PadReader : IDisposable
 
         int result = SDL.SDL_GameControllerSendEffect(_controller, (IntPtr)effect, DualSenseEffectSize);
         if (send == PlayerLightsSend.Changed)
-            AppLog.Default.Info($"Sdl2PadReader: player LEDs 0x{mask:X2} for battery {Battery} (SendEffect -> {result})");
+            AppLog.Default.Info($"Sdl2PadReader: player LEDs 0x{mask:X2} (SendEffect -> {result})");
 
         if (result != 0 && !_playerLightsFailureLogged)
         {
