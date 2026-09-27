@@ -38,6 +38,9 @@ internal sealed class Sdl2PadReader : IDisposable
     // Bumped on every successful open, so callers can tell a reconnect apart from the same session.
     public int ConnectionSerial { get; private set; }
 
+    // Null when SDL gives no address (e.g. a pad that doesn't report one as its serial).
+    public ulong? BluetoothAddress { get; private set; }
+
     private Color? _appliedLightbar;
 
     // DS5EffectsState_t from SDL's hidapi PS5 driver: only the player-LED fields are filled in.
@@ -252,11 +255,12 @@ internal sealed class Sdl2PadReader : IDisposable
             IntPtr joystick = SDL.SDL_GameControllerGetJoystick(handle);
             _controllerInstanceId = SDL.SDL_JoystickInstanceID(joystick);
             CurrentDeviceIdentity = TryGetDeviceIdentity(handle, joystick);
+            BluetoothAddress = IdlePowerOff.ParseBluetoothAddress(SDL.SDL_GameControllerGetSerial(handle));
             var type = SDL.SDL_GameControllerGetType(handle);
             _isDualSense = type == SDL.SDL_GameControllerType.SDL_CONTROLLER_TYPE_PS5;
             _playerLights.Restart();
             _hasReportStamp = ReportStampIsFree(type) && TryEnableReportStamp(handle);
-            AppLog.Default.Info($"Sdl2PadReader: opened {type} ({SDL.SDL_GameControllerName(handle)}), range guard {DescribeRangeGuard(type, _hasReportStamp)}");
+            AppLog.Default.Info($"Sdl2PadReader: opened {type} ({SDL.SDL_GameControllerName(handle)}), range guard {DescribeRangeGuard(type, _hasReportStamp)}, idle power-off {(BluetoothAddress is null ? "unavailable (no address)" : "available")}");
             ConnectionSerial++;
             return;
         }
@@ -316,6 +320,7 @@ internal sealed class Sdl2PadReader : IDisposable
         _controller = IntPtr.Zero;
         _controllerInstanceId = -1;
         CurrentDeviceIdentity = null;
+        BluetoothAddress = null;
         _appliedLightbar = null;
         _isDualSense = false;
         _playerLightsFailureLogged = false;

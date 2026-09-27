@@ -257,6 +257,7 @@ namespace ControllerMagic
 
         private readonly InputEmulator _input;
         private readonly XInputPadReader _xinput = new(TimeProvider.System);
+        private readonly IdlePowerOff _idlePowerOff = new(TimeProvider.System, new BluetoothPowerOff());
 
         private const int SlowScrollIntervalMs = 200;
         private const int FastScrollIntervalMs = 20;
@@ -557,6 +558,8 @@ namespace ControllerMagic
 
             if (blockedFullscreen)
             {
+                // A game has the pad; its use isn't seen here, so it must never count as idle.
+                _idlePowerOff.Reset();
                 StandDownForFullscreen();
                 return FullscreenPollIntervalMs;
             }
@@ -575,6 +578,8 @@ namespace ControllerMagic
             IsControllerConnected = gotPad;
             UpdateStatusText(source);
             _connection.Observe(source, _xinput.LastSlot, sdlPadReader.CurrentDeviceIdentity, sdlPadReader.ConnectionSerial);
+
+            ObserveIdle(source, pad, sdlPadReader.BluetoothAddress);
 
             if (gotPad)
             {
@@ -599,6 +604,22 @@ namespace ControllerMagic
 
             _passthrough.Tick(pad, gotPad, _connection.Identity, _connection.Serial);
             return gotPad ? PollIntervalMs : IdlePollIntervalMs;
+        }
+
+        // Only SDL pads can be switched off; an Xbox pad, or none, starts the wait over.
+        private void ObserveIdle(PadSource source, PadState pad, ulong? bluetoothAddress)
+        {
+            if (source != PadSource.Sdl)
+            {
+                _idlePowerOff.Reset();
+                return;
+            }
+
+            _idlePowerOff.Observe(
+                pad,
+                bluetoothAddress,
+                new IdleThresholds(StickDeadZone, ScrollDeadZone),
+                TimeSpan.FromMinutes(AppSettings.Instance.ControllerIdleOffMinutes));
         }
 
         private readonly RepeatingFaultThrottle _tickFaults = new(TimeProvider.System);

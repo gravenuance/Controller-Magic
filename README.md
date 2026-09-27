@@ -31,6 +31,9 @@ remote outside of fullscreen games — a background tray app, not a window you k
 - **Bluetooth range guard** — if a PlayStation controller goes quiet (usually from being too far
   away), it is treated as let go rather than stuck on its last input, so the cursor doesn't drift
   off and no button stays held.
+- **Turns an idle controller off** — a wireless PlayStation controller left unused for 15 minutes
+  is switched off, as Steam would do if "Use HidHide" didn't hide it from Steam. Adjustable in
+  Settings, or set to Never.
 - **Starts with Windows** — on by default, toggleable from Settings.
 - **Use HidHide** (optional, off by default) — stops the Guide/Home/Steam button from opening
   Xbox Game Bar or Steam's Big Picture mode, so it's free to be used for something else, and
@@ -43,8 +46,8 @@ remote outside of fullscreen games — a background tray app, not a window you k
   it off and on once when that's needed.
 - **Right-click (or double-click) the tray icon** for Settings, Restart, and Exit.
 
-Deadzones, sensitivity, the acceleration curve, ramp-up time, touchpad speed, and both app/service lists are all
-adjustable from Settings.
+Deadzones, sensitivity, the acceleration curve, ramp-up time, touchpad speed, the idle turn-off time, and both
+app/service lists are all adjustable from Settings.
 
 ## Building
 

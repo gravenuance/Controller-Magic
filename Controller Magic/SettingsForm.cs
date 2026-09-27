@@ -176,6 +176,15 @@ namespace ControllerMagic
                 formatReadout: v => v.ToString());
             EndCard();
 
+            BeginCard("Controller");
+            AddSlider(
+                name: "Turn off when idle",
+                range: AppSettings.ControllerIdleOffMinutesRange,
+                get: () => AppSettings.Instance.ControllerIdleOffMinutes,
+                set: v => AppSettings.Instance.ControllerIdleOffMinutes = v,
+                formatReadout: v => v == 0 ? "Never" : $"{v} min");
+            EndCard();
+
             BeginCard("Full-screen apps");
             AddChipField(
                 "Keep receiving input from",

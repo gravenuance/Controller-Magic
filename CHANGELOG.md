@@ -8,6 +8,11 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Added
+- A wireless PlayStation controller now switches off after 15 minutes unused, as it did with
+  Steam before "Use HidHide" hid it from Steam. Settings has a "Turn off when idle" slider, up to
+  an hour or Never. A controller on USB stays on.
+
 ### Fixed
 - Since 1.9.0, a slight push of a stick could move the cursor the wrong way (upwards when pushed
   right, for example), because Windows placed each step one pixel off. The cursor now goes

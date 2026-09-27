@@ -41,6 +41,7 @@ namespace ControllerMagic
         internal static readonly SettingRange StickAccelPowerRange = new(10, 40, 10);
         internal static readonly SettingRange StickRampSecondsRange = new(0, 100, 100);
         internal static readonly SettingRange TouchpadSpeedRange = new(300, 3000);
+        internal static readonly SettingRange ControllerIdleOffMinutesRange = new(0, 60);
 
         // All deadzone modifiers
         public int StickDeadZone { get; set; } = 4000;
@@ -76,6 +77,9 @@ namespace ControllerMagic
         // Cursor pixels for one finger slide across the full width of a DualSense/DualShock 4 touchpad.
         public int TouchpadSpeed { get; set; } = 1200;
 
+        // Minutes unused before a wireless pad is switched off, Steam's default; 0 keeps it on.
+        public int ControllerIdleOffMinutes { get; set; } = 15;
+
         // Process names (substring match) whose fullscreen windows still receive
         // controller input instead of being treated as a game and blocked.
         public List<string> WatchedProcessNames { get; set; } = new()
@@ -110,6 +114,7 @@ namespace ControllerMagic
             StickAccelPower = CheckRange(StickAccelPower, defaults.StickAccelPower, StickAccelPowerRange, nameof(StickAccelPower), corrected);
             StickRampSeconds = CheckRange(StickRampSeconds, defaults.StickRampSeconds, StickRampSecondsRange, nameof(StickRampSeconds), corrected);
             TouchpadSpeed = CheckRange(TouchpadSpeed, TouchpadSpeedRange, nameof(TouchpadSpeed), corrected);
+            ControllerIdleOffMinutes = CheckRange(ControllerIdleOffMinutes, ControllerIdleOffMinutesRange, nameof(ControllerIdleOffMinutes), corrected);
             WatchedProcessNames = CheckList(WatchedProcessNames, defaults.WatchedProcessNames, nameof(WatchedProcessNames), corrected);
             StreamingServiceNames = CheckList(StreamingServiceNames, defaults.StreamingServiceNames, nameof(StreamingServiceNames), corrected);
 
