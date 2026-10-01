@@ -61,6 +61,26 @@ public sealed class AppSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Load_FileFromBeforeTaskbarFollowing_TurnsItOn()
+    {
+        WriteSettings($$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion}}, "StickDeadZone": 1234}""");
+
+        var settings = CreateStore().Load();
+
+        Assert.True(settings.TaskbarAppsFollowCursor);
+    }
+
+    [Fact]
+    public void Load_TaskbarFollowingTurnedOff_StaysOff()
+    {
+        WriteSettings($$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion}}, "TaskbarAppsFollowCursor": false}""");
+
+        var settings = CreateStore().Load();
+
+        Assert.False(settings.TaskbarAppsFollowCursor);
+    }
+
+    [Fact]
     public void Load_CurrentFile_KeepsFieldsAndLeavesFileAlone()
     {
         string json = $$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion}}, "StickDeadZone": 1234, "WatchedProcessNames": ["notepad"]}""";

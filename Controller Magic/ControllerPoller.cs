@@ -258,6 +258,7 @@ namespace ControllerMagic
         private readonly InputEmulator _input;
         private readonly XInputPadReader _xinput = new(TimeProvider.System);
         private readonly IdlePowerOff _idlePowerOff = new(TimeProvider.System, new BluetoothPowerOff());
+        private readonly TaskbarClickFollower _taskbarFollower = new(TimeProvider.System, new Win32DesktopWindows());
 
         private const int SlowScrollIntervalMs = 200;
         private const int FastScrollIntervalMs = 20;
@@ -606,6 +607,9 @@ namespace ControllerMagic
                 HandlePadLost();
             }
 
+            if (AppSettings.Instance.TaskbarAppsFollowCursor)
+                _taskbarFollower.Tick();
+
             _passthrough.Tick(pad, gotPad, _connection.Identity, _connection.Serial);
             return gotPad ? PollIntervalMs : IdlePollIntervalMs;
         }
@@ -663,6 +667,12 @@ namespace ControllerMagic
         }
 
         internal void HandlePadLost() => PauseInput();
+
+        private void OnControllerClick()
+        {
+            if (AppSettings.Instance.TaskbarAppsFollowCursor)
+                _taskbarFollower.OnControllerClick();
+        }
 
         // Whatever was held or moving when input stopped must not resume as a press, a click or a
         // stick already at full ramp speed; triggers count as held until released.
@@ -806,6 +816,7 @@ namespace ControllerMagic
             {
                 case TouchClick.Left:
                     _input.LeftClick();
+                    OnControllerClick();
                     break;
                 case TouchClick.Right:
                     _input.RightClick();
@@ -921,6 +932,10 @@ namespace ControllerMagic
             // Driven directly off current state (not edges) so the button can never get stuck
             // down if keyboard mode is toggled while A or the touchpad is still held.
             _input.SetLeftButtonState(!_keyboardMode && (A_down || _touchpadHoldsLeft));
+
+            // On release, where the taskbar acts on the click.
+            if (!_keyboardMode && !A_down && (_prevButtons & PadButtons.A) != 0)
+                OnControllerClick();
 
             if (!_keyboardMode)
             {

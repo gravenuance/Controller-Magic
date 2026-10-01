@@ -59,6 +59,7 @@ namespace ControllerMagic
         private const int VizWidth = 64;
         private const int VizHeight = 34;
         private const int VizGap = 10;
+        private const int ToggleRowGap = 10;
 
         // Row height is the preview's, so every slider row is one line of the same height.
         private const int SliderRowStep = VizHeight + 4;
@@ -121,6 +122,10 @@ namespace ControllerMagic
 
             BeginCard(null);
             AddStartupToggle();
+            AddToggle(
+                "Open taskbar apps on the cursor's screen",
+                () => AppSettings.Instance.TaskbarAppsFollowCursor,
+                value => AppSettings.Instance.TaskbarAppsFollowCursor = value);
             EndCard();
 
             BeginCard("Guide button");
@@ -523,6 +528,41 @@ namespace ControllerMagic
                     ct => ReconcileStartupToggleAsync(toggle, () => userChanged, ct),
                     _ => { });
             });
+        }
+
+        // A plain on/off setting that applies as soon as it's saved.
+        private void AddToggle(string name, Func<bool> get, Action<bool> set)
+        {
+            if (_card == null) throw new InvalidOperationException("AddToggle called outside a card");
+
+            _cardY += ToggleRowGap;
+            var title = new Label
+            {
+                Text = name,
+                AutoSize = true,
+                Location = new Point(CardPadding, _cardY + 3),
+                Font = Theme.UiFontBold,
+                ForeColor = Theme.Ink,
+            };
+
+            var toggle = new ToggleSwitch
+            {
+                Checked = get(),
+                TabIndex = _nextTabIndex++,
+                AccessibleName = name,
+            };
+            toggle.Location = new Point(_card.Width - CardPadding - toggle.Width, _cardY);
+            toggle.Toggled += (_, __) =>
+            {
+                set(toggle.Checked);
+                RequestSave();
+            };
+
+            _card.Controls.Add(title);
+            _card.Controls.Add(toggle);
+            _cardY += toggle.Height;
+
+            _onShown.Add(() => toggle.Checked = get());
         }
 
         // Busy until schtasks finishes, so rapid clicks can't run overlapping changes. Not cancelled

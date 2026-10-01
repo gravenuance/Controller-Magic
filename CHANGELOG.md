@@ -8,6 +8,11 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Added
+- Clicking an app on the taskbar with the controller now brings its window up on the screen
+  you clicked on, whether the app was just started or already open. Turn this off in Settings
+  with "Open taskbar apps on the cursor's screen".
+
 ## [1.10.1] - 2026-09-27
 
 ### Changed

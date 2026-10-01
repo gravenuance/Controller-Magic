@@ -62,6 +62,9 @@ namespace ControllerMagic
         // Picture mode - neither exposes a config flag for that, so this is the only reliable fix.
         public bool UseHidHide { get; set; }
 
+        // Moves the window a controller click on the taskbar brings up to the monitor under the cursor.
+        public bool TaskbarAppsFollowCursor { get; set; } = true;
+
         // Exponent applied to the normalized stick magnitude (0..1) before scaling cursor speed.
         // >1 gives a gradual ramp - slow/precise near center, faster toward full deflection.
         // <1 does the opposite (snaps to near-max speed on almost any push), which is why the
