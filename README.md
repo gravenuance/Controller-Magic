@@ -46,8 +46,8 @@ remote outside of fullscreen games — a background tray app, not a window you k
   (HidHide + ViGEmBus, fetched and installed automatically behind a single admin prompt the
   first time it's turned on) and may be blocked by some anti-cheat systems (BattlEye,
   EasyAntiCheat) while it's active. A controller that was already connected when hiding started
-  (Steam grabs it at login) stays visible until it reconnects - a notification asks you to turn
-  it off and on once when that's needed.
+  (Steam grabs it at login) stays visible until it reconnects - a warning icon beside "Use
+  HidHide" in Settings shows when you need to turn it off and on once.
 - **Right-click (or double-click) the tray icon** for Settings, Restart, and Exit.
 
 Deadzones, sensitivity, the acceleration curve, ramp-up time, touchpad speed, the idle turn-off time, and both

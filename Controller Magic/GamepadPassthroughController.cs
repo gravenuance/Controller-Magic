@@ -3,7 +3,6 @@ namespace ControllerMagic;
 // Something the user has to know or act on; raised off the UI thread.
 internal enum PassthroughNotice
 {
-    ReconnectToFinishHiding,
     TurnedOffBySafetyCutoff,
 }
 
@@ -45,9 +44,13 @@ internal sealed class GamepadPassthroughController : IDisposable
     private readonly Lock _shutdownGate = new();
     private volatile bool _shutDown;
     private static readonly TimeSpan ShutdownWait = TimeSpan.FromSeconds(2);
-    private Connection? _connection;
+    // Replaced on the poll thread, read by Settings.
+    private volatile Connection? _connection;
 
     public event Action<PassthroughNotice>? NoticeRaised;
+
+    // The connected controller is still visible to apps that opened it before it was hidden, until it reconnects.
+    public bool ReconnectNeeded => _connection?.ReconnectNeeded ?? false;
 
     // Safety cutoff, kept as defense-in-depth even after the leak below was root-caused and
     // fixed: a real session hit Windows' ~10,000-per-process USER-object ceiling within seconds
@@ -351,14 +354,15 @@ internal sealed class GamepadPassthroughController : IDisposable
             $"GamepadPassthroughController: block {device.VendorId:X4}:{device.ProductId:X4} -> {result} " +
             $"(cloaked at arrival: {connection.CloakedAtArrival})");
 
-        if (result != BlockResult.Failed && ShouldAskToReconnect(connection.CloakedAtArrival, result == BlockResult.AlreadyBlocked))
-            NoticeRaised?.Invoke(PassthroughNotice.ReconnectToFinishHiding);
+        connection.ReconnectNeeded = result != BlockResult.Failed
+            && ShouldAskToReconnect(connection.CloakedAtArrival, result == BlockResult.AlreadyBlocked);
     }
 
     // One SDL open of a physical pad; blocking is attempted once per connection.
     private sealed class Connection(int serial, PhysicalDeviceIdentity device, bool cloakedAtArrival)
     {
         private volatile bool _blockAttempted;
+        private volatile bool _reconnectNeeded;
 
         public int Serial { get; } = serial;
         public PhysicalDeviceIdentity Device { get; } = device;
@@ -368,6 +372,12 @@ internal sealed class GamepadPassthroughController : IDisposable
         {
             get => _blockAttempted;
             set => _blockAttempted = value;
+        }
+
+        public bool ReconnectNeeded
+        {
+            get => _reconnectNeeded;
+            set => _reconnectNeeded = value;
         }
     }
 

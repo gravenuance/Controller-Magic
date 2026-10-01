@@ -16,6 +16,11 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
   output, for when Windows switches it by itself after a monitor is turned on or off. The new
   output's name shows briefly at the bottom of the screen.
 
+### Changed
+- After turning on "Use HidHide", the reminder to turn the controller off and on to finish hiding
+  it is no longer a Windows notification. A warning icon shows beside "Use HidHide" in Settings
+  instead, until the controller has reconnected.
+
 ## [1.10.1] - 2026-09-27
 
 ### Changed

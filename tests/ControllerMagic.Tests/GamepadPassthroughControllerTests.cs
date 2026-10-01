@@ -35,6 +35,49 @@ public class GamepadPassthroughControllerTests
     }
 
     [Fact]
+    public void ReconnectNeeded_PadConnectedBeforeHiding_IsSet()
+    {
+        var harness = new PassthroughHarness();
+
+        harness.TickWithPad();
+
+        Assert.True(harness.Controller.ReconnectNeeded);
+    }
+
+    [Fact]
+    public void ReconnectNeeded_PadReconnectsWhileHidden_IsCleared()
+    {
+        var harness = new PassthroughHarness();
+        harness.TickWithPad();
+
+        harness.TickWithoutPad();
+        harness.Controller.Tick(default, gotPad: true, PassthroughHarness.Device, PassthroughHarness.Serial + 1);
+
+        Assert.False(harness.Controller.ReconnectNeeded);
+    }
+
+    [Fact]
+    public void ReconnectNeeded_BlockFailed_IsNotSet()
+    {
+        var harness = new PassthroughHarness();
+        harness.HidHide.NextBlockResult = BlockResult.Failed;
+
+        harness.TickWithPad();
+
+        Assert.False(harness.Controller.ReconnectNeeded);
+    }
+
+    [Fact]
+    public void ReconnectNeeded_NoPadEverConnected_IsNotSet()
+    {
+        var harness = new PassthroughHarness();
+
+        harness.TickWithoutPad();
+
+        Assert.False(harness.Controller.ReconnectNeeded);
+    }
+
+    [Fact]
     public void Tick_VirtualPadFailsToConnect_RealPadIsNotLeftHidden()
     {
         var harness = new PassthroughHarness();

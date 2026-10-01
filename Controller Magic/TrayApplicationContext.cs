@@ -146,7 +146,6 @@ namespace ControllerMagic
         {
             string text = notice switch
             {
-                PassthroughNotice.ReconnectToFinishHiding => "Turn your controller off and on to finish hiding it.",
                 PassthroughNotice.TurnedOffBySafetyCutoff => "Use HidHide was turned off: too many window handles in use.",
                 _ => throw new ArgumentOutOfRangeException(nameof(notice), notice, null),
             };

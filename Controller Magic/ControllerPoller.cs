@@ -883,6 +883,8 @@ namespace ControllerMagic
 
         public event Action<bool>? KeyboardModeChanged;
 
+        public bool HidHideReconnectNeeded => _passthrough.ReconnectNeeded;
+
         public event Action<PassthroughNotice>? PassthroughNoticeRaised
         {
             add => _passthrough.NoticeRaised += value;

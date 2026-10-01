@@ -83,6 +83,11 @@ namespace ControllerMagic
 
         private Panel? _statusDot;
         private Label? _statusLabel;
+        private Label? _reconnectIcon;
+        private ToggleSwitch? _hidHideToggle;
+
+        private const string WarningGlyph = "\uE7BA";
+        private const string ReconnectHint = "Turn your controller off and on to finish hiding it.";
 
         internal SettingsForm(ControllerPoller poller)
         {
@@ -338,6 +343,20 @@ namespace ControllerMagic
             _statusDot.Invalidate();
             _statusLabel.Text = _poller.ControllerStatusText;
             _statusLabel.ForeColor = connected ? Theme.Ink : Theme.Muted;
+
+            RefreshReconnectIcon();
+        }
+
+        private void RefreshReconnectIcon()
+        {
+            if (_reconnectIcon == null || _hidHideToggle == null) return;
+
+            bool show = AppSettings.Instance.UseHidHide && _poller.HidHideReconnectNeeded;
+            if (_reconnectIcon.Visible == show)
+                return;
+            _reconnectIcon.Visible = show;
+            // The icon can't take focus, so the switch carries the hint for keyboard and screen-reader users.
+            _hidHideToggle.AccessibleDescription = show ? ReconnectHint : null;
         }
 
         // ============ cards ============
@@ -623,9 +642,24 @@ namespace ControllerMagic
             };
             toggle.Location = new Point(_card.Width - CardPadding - toggle.Width, _cardY);
 
-            // Status shares the toggle's row, bounded to the gap between name and switch; a long one
-            // is cut with an ellipsis and shown whole in a tooltip rather than running under the switch.
-            int statusX = CardPadding + title.PreferredWidth + VizGap;
+            // Beside the name while the controller still needs a reconnect to be fully hidden.
+            var reconnectIcon = new Label
+            {
+                Text = WarningGlyph,
+                AutoSize = true,
+                Location = new Point(CardPadding + title.PreferredWidth + 4, _cardY + 4),
+                Font = Theme.IconFont,
+                ForeColor = Theme.Accent,
+                Visible = false,
+                AccessibleName = ReconnectHint,
+            };
+            _toolTip.SetToolTip(reconnectIcon, ReconnectHint);
+            _reconnectIcon = reconnectIcon;
+            _hidHideToggle = toggle;
+
+            // Status shares the toggle's row, bounded to the gap between name (and icon) and switch; a long
+            // one is cut with an ellipsis and shown whole in a tooltip rather than running under the switch.
+            int statusX = reconnectIcon.Left + reconnectIcon.PreferredWidth + VizGap;
             var status = new Label
             {
                 Text = "Checking...",
@@ -637,6 +671,7 @@ namespace ControllerMagic
                 ForeColor = Theme.Muted,
             };
             _card.Controls.Add(title);
+            _card.Controls.Add(reconnectIcon);
             _card.Controls.Add(status);
             _card.Controls.Add(toggle);
             _cardY += toggle.Height + 2;
