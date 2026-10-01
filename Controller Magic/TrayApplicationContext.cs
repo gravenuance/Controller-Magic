@@ -16,6 +16,7 @@ namespace ControllerMagic
         private readonly NotifyIcon _trayIcon;
         private readonly ControllerPoller _controllerPoller;
         private readonly KeyboardOverlayForm _overlay;
+        private readonly SoundOutputToast _soundToast = new();
         private readonly Bitmap _settingsIcon;
         private readonly Bitmap _restartIcon;
         private readonly Bitmap _exitIcon;
@@ -52,6 +53,7 @@ namespace ControllerMagic
             _controllerPoller = new ControllerPoller();
             _controllerPoller.KeyboardModeChanged += OnKeyboardModeChanged;
             _controllerPoller.PassthroughNoticeRaised += OnPassthroughNotice;
+            _controllerPoller.SoundOutputChanged += OnSoundOutputChanged;
 
             _overlay = new KeyboardOverlayForm(_controllerPoller, TimeProvider.System);
             // Stays hidden until keyboard mode opens, but BeginInvoke needs its handle from the start.
@@ -137,6 +139,9 @@ namespace ControllerMagic
             }
         }
 
+        private void OnSoundOutputChanged(SoundOutput? output) =>
+            _overlay.BeginInvoke(() => _soundToast.ShowMessage(output?.Name ?? "Couldn't switch sound output"));
+
         private void OnPassthroughNotice(PassthroughNotice notice)
         {
             string text = notice switch
@@ -217,12 +222,14 @@ namespace ControllerMagic
             _settings.Close();
             _controllerPoller.KeyboardModeChanged -= OnKeyboardModeChanged;
             _controllerPoller.PassthroughNoticeRaised -= OnPassthroughNotice;
+            _controllerPoller.SoundOutputChanged -= OnSoundOutputChanged;
             _controllerPoller.Stop();
             _controllerPoller.Dispose();
 
             _resourceMonitor.Dispose();
 
             _overlay?.Close();
+            _soundToast.Close();
 
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
@@ -243,6 +250,7 @@ namespace ControllerMagic
                 _settings.Dispose();
                 _trayIcon.Dispose();
                 _overlay?.Dispose();
+                _soundToast.Dispose();
                 _settingsIcon.Dispose();
                 _restartIcon.Dispose();
                 _exitIcon.Dispose();

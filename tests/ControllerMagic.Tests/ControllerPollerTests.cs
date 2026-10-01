@@ -7,6 +7,30 @@ public class ControllerPollerTests
 {
     private static ControllerPoller NewPoller() => new(new InputEmulator(new FakeDesktopInput()));
 
+    [Theory]
+    [InlineData(true, true, false, CycleDirection.Next)]
+    [InlineData(true, false, true, CycleDirection.Previous)]
+    [InlineData(true, true, true, CycleDirection.Next)]
+    [InlineData(false, true, false, null)]
+    [InlineData(false, false, true, null)]
+    [InlineData(true, false, false, null)]
+    internal void SoundOutputCombo_OnlyRightTriggerWithUpOrDown_Cycles(bool rtDown, bool up, bool down, CycleDirection? expected)
+    {
+        Assert.Equal(expected, ControllerPoller.SoundOutputCombo(rtDown, up, down));
+    }
+
+    [Theory]
+    [InlineData(159, false, false)]
+    [InlineData(160, false, true)]
+    [InlineData(121, true, true)]
+    [InlineData(120, true, false)]
+    [InlineData(140, false, false)]
+    [InlineData(140, true, true)]
+    public void IsTriggerDown_PressesAt160AndReleasesAt120(int raw, bool wasDown, bool expected)
+    {
+        Assert.Equal(expected, ControllerPoller.IsTriggerDown((byte)raw, wasDown));
+    }
+
     [Fact]
     public void ComputeHoldRamp_RampSecondsZeroOrNegative_AlwaysFullSpeed()
     {

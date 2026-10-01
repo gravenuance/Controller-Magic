@@ -259,6 +259,10 @@ namespace ControllerMagic
         private readonly XInputPadReader _xinput = new(TimeProvider.System);
         private readonly IdlePowerOff _idlePowerOff = new(TimeProvider.System, new BluetoothPowerOff());
         private readonly TaskbarClickFollower _taskbarFollower = new(TimeProvider.System, new Win32DesktopWindows());
+        private readonly SoundOutputCycler _soundOutputs = new(new CoreAudioSoundOutputs());
+
+        // Raised on a background thread with the output now in use, or null when switching failed.
+        public event Action<SoundOutput?>? SoundOutputChanged;
 
         private const int SlowScrollIntervalMs = 200;
         private const int FastScrollIntervalMs = 20;
@@ -939,6 +943,17 @@ namespace ControllerMagic
 
             if (!_keyboardMode)
             {
+                bool RT_down = IsTriggerDown(pad.RightTrigger, _rtWasDown);
+                _rtWasDown = RT_down;
+
+                // The combo picks the sound output, so its D-pad press doesn't also reach the app.
+                if (SoundOutputCombo(RT_down, Up_pressed, Down_pressed) is { } direction)
+                {
+                    CycleSoundOutput(direction);
+                    Up_pressed = false;
+                    Down_pressed = false;
+                }
+
                 if (B_pressed && !_streaming)
                     _input.SendKey(VK_BACK);
                 else if (B_pressed)
@@ -985,14 +1000,29 @@ namespace ControllerMagic
             _prevButtons = buttons;
         }
 
+        private const byte TriggerPressThreshold = 160;
+        private const byte TriggerReleaseThreshold = 120;
+
+        // Hysteresis: once down, a trigger stays down until clearly released.
+        internal static bool IsTriggerDown(byte raw, bool wasDown) =>
+            wasDown ? raw > TriggerReleaseThreshold : raw >= TriggerPressThreshold;
+
+        // RT held + D-pad Up/Down; null when this frame isn't that combo.
+        internal static CycleDirection? SoundOutputCombo(bool rtDown, bool upPressed, bool downPressed) =>
+            !rtDown ? null
+            : upPressed ? CycleDirection.Next
+            : downPressed ? CycleDirection.Previous
+            : null;
+
+        // Off the poll thread: Windows can take a moment to switch, and the cursor mustn't stall meanwhile.
+        private void CycleSoundOutput(CycleDirection direction) => _ = Task.Run(() =>
+            SoundOutputChanged?.Invoke(_soundOutputs.Cycle(direction)));
+
         private void ProcessKeyboardMode(PadState pad)
         {
             _touchpadMouse.Reset();
             _touchpadHoldsLeft = false;
             var buttons = pad.Buttons;
-
-            const byte TriggerPressThreshold = 160;
-            const byte TriggerReleaseThreshold = 120;
 
             bool LB_pressed = WasPressed(buttons, PadButtons.LeftShoulder);
             bool RB_pressed = WasPressed(buttons, PadButtons.RightShoulder);
@@ -1000,14 +1030,8 @@ namespace ControllerMagic
             byte LT_raw = pad.LeftTrigger;
             byte RT_raw = pad.RightTrigger;
 
-            // down state with simple hysteresis: once down, stay down until clearly released
-            bool LT_down = _ltWasDown
-                ? (LT_raw > TriggerReleaseThreshold)
-                : (LT_raw >= TriggerPressThreshold);
-
-            bool RT_down = _rtWasDown
-                ? (RT_raw > TriggerReleaseThreshold)
-                : (RT_raw >= TriggerPressThreshold);
+            bool LT_down = IsTriggerDown(LT_raw, _ltWasDown);
+            bool RT_down = IsTriggerDown(RT_raw, _rtWasDown);
 
             // edge: only once per pull above the press threshold
             bool LT_pressed = LT_down && !_ltWasDown;

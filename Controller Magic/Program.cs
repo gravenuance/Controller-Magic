@@ -52,10 +52,8 @@ namespace ControllerMagic
             Application.ThreadException += (_, e) => reporter.ReportSurvivable(e.Exception);
             AppDomain.CurrentDomain.UnhandledException += (_, e) => reporter.ReportFatal(e.ExceptionObject as Exception);
 
-            // Not currently reachable (nothing here fires-and-forgets a Task without awaiting or
-            // observing it), but StartupHelper's process-spawning calls are moving to async - this
-            // is the safety net for whenever a future one is left unobserved, so a faulted
-            // background Task doesn't silently vanish instead of being logged.
+            // Window moves and sound output switches run as fire-and-forget Tasks that catch the
+            // failures they expect; anything else faults the Task and is logged here, not lost.
             TaskScheduler.UnobservedTaskException += (_, e) =>
             {
                 AppLog.Default.Error("Unobserved task exception", e.Exception);
