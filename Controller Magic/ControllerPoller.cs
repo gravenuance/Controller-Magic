@@ -883,6 +883,9 @@ namespace ControllerMagic
 
         public event Action<bool>? KeyboardModeChanged;
 
+        // Raised on the poll thread with the tile's character each time a wheel letter is typed.
+        public event Action<char>? DaisywheelKeyTyped;
+
         public bool HidHideReconnectNeeded => _passthrough.ReconnectNeeded;
 
         public event Action<PassthroughNotice>? PassthroughNoticeRaised
@@ -1129,9 +1132,13 @@ namespace ControllerMagic
             {
                 const ushort VK_SHIFT = 0x10;
                 _input.SendKeyWithModifier(VK_SHIFT, entry.Vk);
-                return;
             }
-            _input.SendKey(entry.Vk);
+            else
+            {
+                _input.SendKey(entry.Vk);
+            }
+
+            DaisywheelKeyTyped?.Invoke(entry.Display);
         }
         private static int GetEntryCount(int layer, int sector)
         {

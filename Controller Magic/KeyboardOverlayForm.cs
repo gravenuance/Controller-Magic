@@ -13,6 +13,7 @@
         private int _keyboardPaintCount;
         private long _lastTimerTickTimestamp;
         private readonly OverlayRepaintGate _repaintGate = new();
+        private readonly KeyEchoForm _keyEcho;
         private const string Legend = "X = ⌫   Y = ␣   B = .";
         // Keyed by the DPI it was measured at, which changes when the window moves monitors.
         private (float Dpi, SizeF Size)? _legendSize;
@@ -43,6 +44,8 @@
             _poller = poller;
             _clock = clock;
             _lastTimerTickTimestamp = clock.GetTimestamp();
+            // Owned, so it always sits above the wheel.
+            _keyEcho = new KeyEchoForm(clock) { Owner = this };
 
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
@@ -90,7 +93,15 @@
         public void HideKeyboard()
         {
             _timer.Stop();
+            _keyEcho.Stop();
             Hide();
+        }
+
+        // Shows the typed letter in the empty middle of the wheel, fading out.
+        public void EchoKey(char letter)
+        {
+            if (Visible)
+                _keyEcho.Echo(letter, new Point(Left + Width / 2, Top + Height / 2));
         }
 
         // Called as keyboard mode opens: lets a few frames render, then checks the window can really

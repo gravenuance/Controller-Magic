@@ -19,6 +19,7 @@
                     components.Dispose();
 
                 _timer.Dispose();
+                _keyEcho.Dispose();
                 _textBrush.Dispose();
                 _hotBrush.Dispose();
                 _normalBrush.Dispose();

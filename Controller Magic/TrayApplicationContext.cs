@@ -54,6 +54,7 @@ namespace ControllerMagic
             _controllerPoller.KeyboardModeChanged += OnKeyboardModeChanged;
             _controllerPoller.PassthroughNoticeRaised += OnPassthroughNotice;
             _controllerPoller.SoundOutputChanged += OnSoundOutputChanged;
+            _controllerPoller.DaisywheelKeyTyped += OnDaisywheelKeyTyped;
 
             _overlay = new KeyboardOverlayForm(_controllerPoller, TimeProvider.System);
             // Stays hidden until keyboard mode opens, but BeginInvoke needs its handle from the start.
@@ -139,6 +140,8 @@ namespace ControllerMagic
             }
         }
 
+        private void OnDaisywheelKeyTyped(char letter) => _overlay.BeginInvoke(() => _overlay.EchoKey(letter));
+
         private void OnSoundOutputChanged(SoundOutput? output) =>
             _overlay.BeginInvoke(() => _soundToast.ShowMessage(output?.Name ?? "Couldn't switch sound output"));
 
@@ -222,6 +225,7 @@ namespace ControllerMagic
             _controllerPoller.KeyboardModeChanged -= OnKeyboardModeChanged;
             _controllerPoller.PassthroughNoticeRaised -= OnPassthroughNotice;
             _controllerPoller.SoundOutputChanged -= OnSoundOutputChanged;
+            _controllerPoller.DaisywheelKeyTyped -= OnDaisywheelKeyTyped;
             _controllerPoller.Stop();
             _controllerPoller.Dispose();
 

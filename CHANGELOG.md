@@ -8,6 +8,10 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Added
+- In the on-screen keyboard, each letter you type from the wheel shows large in the middle of
+  it, orange with a dark outline, and shrinks as it fades away over 0.7 seconds.
+
 ## [1.11.0] - 2026-10-01
 
 ### Added
