@@ -8,6 +8,8 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-01
+
 ### Added
 - Clicking an app on the taskbar with the controller now brings its window up on the screen
   you clicked on, whether the app was just started or already open. Turn this off in Settings
