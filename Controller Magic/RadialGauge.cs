@@ -9,7 +9,13 @@ namespace ControllerMagic
         public double Fraction
         {
             get;
-            set { field = Math.Clamp(value, 0.0, 1.0); Invalidate(); }
+            set
+            {
+                double clamped = Math.Clamp(value, 0.0, 1.0);
+                if (field == clamped) return;
+                field = clamped;
+                Invalidate();
+            }
         }
 
         public Color RingColor { get; set; } = Color.FromArgb(46, 255, 255, 255);

@@ -11,13 +11,17 @@ public sealed class UnhandledExceptionReporterTests : IDisposable
 
     public void Dispose()
     {
+        _log?.Flush();
         if (File.Exists(_logPath)) File.Delete(_logPath);
     }
+
+    private AppLog? _log;
 
     private UnhandledExceptionReporter NewReporter(Action<ExceptionNotice>? notify = null)
     {
         var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-25T10:00:00Z"));
-        return new UnhandledExceptionReporter(new AppLog(_logPath, clock), clock, notify ?? _notices.Add);
+        _log = new AppLog(_logPath, clock);
+        return new UnhandledExceptionReporter(_log, clock, notify ?? _notices.Add);
     }
 
     private static InvalidOperationException Thrown(string message)
@@ -40,8 +44,21 @@ public sealed class UnhandledExceptionReporterTests : IDisposable
         reporter.ReportSurvivable(Thrown("first"));
         reporter.ReportSurvivable(Thrown("second"));
 
+        _log!.Flush();
+
         Assert.Equal([ExceptionNotice.Survived], _notices);
         Assert.Contains("first", File.ReadAllText(_logPath), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReportFatal_FlushesTheLogBeforeTellingTheUser()
+    {
+        string? logAtNotice = null;
+        var reporter = NewReporter(_ => logAtNotice = File.ReadAllText(_logPath));
+
+        reporter.ReportFatal(Thrown("about to die"));
+
+        Assert.Contains("about to die", logAtNotice, StringComparison.Ordinal);
     }
 
     [Fact]

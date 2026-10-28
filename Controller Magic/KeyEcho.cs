@@ -53,7 +53,8 @@ internal sealed class KeyEchoForm : Form
     private readonly SolidBrush _fill = new(Theme.Accent);
     private readonly Pen _outline = new(OutlineColor, OutlineWidth) { LineJoin = LineJoin.Round };
     private readonly StringFormat _centred = new() { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-    private string _letter = string.Empty;
+    // The letter's outline at full size, built once per echo; each frame only scales it.
+    private GraphicsPath? _path;
     private double _scale = 1;
 
     public KeyEchoForm(TimeProvider clock)
@@ -89,7 +90,9 @@ internal sealed class KeyEchoForm : Form
     // Restarts the fade with this letter, centred on the given point.
     public void Echo(char letter, Point centre)
     {
-        _letter = char.ToUpperInvariant(letter).ToString();
+        _path?.Dispose();
+        _path = new GraphicsPath();
+        _path.AddString(char.ToUpperInvariant(letter).ToString(), _fontFamily, (int)FontStyle.Bold, LetterEm, ClientRectangle, _centred);
         Location = new Point(centre.X - Width / 2, centre.Y - Height / 2);
         _animation.Start();
 
@@ -125,16 +128,22 @@ internal sealed class KeyEchoForm : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        if (_letter.Length == 0)
+        if (_path is null)
             return;
 
         var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
-        using var path = new GraphicsPath();
-        path.AddString(_letter, _fontFamily, (int)FontStyle.Bold, (float)(LetterEm * _scale), ClientRectangle, _centred);
-        g.DrawPath(_outline, path);
-        g.FillPath(_fill, path);
+        // Scaled about the middle, with the pen scaled back so the outline keeps its width.
+        float scale = (float)_scale;
+        g.TranslateTransform(ClientSize.Width / 2f, ClientSize.Height / 2f);
+        g.ScaleTransform(scale, scale);
+        g.TranslateTransform(-ClientSize.Width / 2f, -ClientSize.Height / 2f);
+        _outline.ResetTransform();
+        _outline.ScaleTransform(1 / scale, 1 / scale);
+
+        g.DrawPath(_outline, _path);
+        g.FillPath(_fill, _path);
     }
 
     protected override void Dispose(bool disposing)
@@ -142,6 +151,7 @@ internal sealed class KeyEchoForm : Form
         if (disposing)
         {
             _timer.Dispose();
+            _path?.Dispose();
             _fontFamily.Dispose();
             _fill.Dispose();
             _outline.Dispose();

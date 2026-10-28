@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text;
+using System.Threading.Channels;
 
 namespace ControllerMagic;
 
@@ -24,7 +26,6 @@ internal sealed class AppLog
 
     private readonly string _path;
     private readonly TimeProvider _clock;
-    private readonly Lock _writeLock = new();
 
     public AppLog(string path, TimeProvider clock)
     {
@@ -54,25 +55,91 @@ internal sealed class AppLog
         return ex != null ? $"{line}{Environment.NewLine}{ex}" : line;
     }
 
-    private void Write(LogLevel level, string message, Exception? ex)
+    // Entries are queued and written by one background task, so a caller (the poll thread above all)
+    // never waits on the disk. The queue is unbounded: the app logs state changes, not a stream.
+    private readonly record struct LogItem(string? Text, TaskCompletionSource? Flushed);
+
+    private readonly Channel<LogItem> _queue = Channel.CreateUnbounded<LogItem>(
+        new UnboundedChannelOptions { SingleReader = true });
+
+    private int _writerStarted;
+    private bool _directoryReady;
+
+    // Long enough for a slow disk, short enough that a stuck one can't hang exit.
+    private static readonly TimeSpan FlushTimeout = TimeSpan.FromSeconds(3);
+
+    // Waits until everything logged so far is on disk. For exit and the crash path, where the
+    // process may end before the background writer gets there.
+    // Blocking is deliberate here: there is no later point to await from.
+    public void Flush()
     {
-        string entry = FormatEntry(level, message, ex);
+        if (Volatile.Read(ref _writerStarted) == 0)
+            return;
+
+        var flushed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Enqueue(new LogItem(null, flushed));
+        flushed.Task.Wait(FlushTimeout);
+    }
+
+    private void Write(LogLevel level, string message, Exception? ex) =>
+        Enqueue(new LogItem(FormatEntry(level, message, ex) + Environment.NewLine + Environment.NewLine, null));
+
+    private void Enqueue(LogItem item)
+    {
+        if (Interlocked.CompareExchange(ref _writerStarted, 1, 0) == 0)
+            _ = Task.Run(WriteLoopAsync);
+
+        _queue.Writer.TryWrite(item);
+    }
+
+    private async Task WriteLoopAsync()
+    {
+        var reader = _queue.Reader;
+        var batch = new StringBuilder();
+        var flushes = new List<TaskCompletionSource>();
+
+        while (await reader.WaitToReadAsync().ConfigureAwait(false))
+        {
+            while (reader.TryRead(out var item))
+            {
+                if (item.Text is { } text)
+                    batch.Append(text);
+                if (item.Flushed is { } flushed)
+                    flushes.Add(flushed);
+            }
+
+            WriteToDisk(batch.ToString());
+            batch.Clear();
+
+            foreach (var flushed in flushes)
+                flushed.TrySetResult();
+            flushes.Clear();
+        }
+    }
+
+    private void WriteToDisk(string text)
+    {
+        if (text.Length == 0)
+            return;
+
         try
         {
-            lock (_writeLock)
+            if (!_directoryReady)
             {
                 string? dir = Path.GetDirectoryName(_path);
                 if (!string.IsNullOrEmpty(dir))
                     Directory.CreateDirectory(dir);
-
-                RotateIfNeeded();
-                File.AppendAllText(_path, entry + Environment.NewLine + Environment.NewLine);
+                _directoryReady = true;
             }
+
+            RotateIfNeeded();
+            File.AppendAllText(_path, text);
         }
         catch
         {
             // Logging itself failing must never crash or cascade - there's nothing more to
-            // safely do at this point.
+            // safely do at this point. The directory is checked again next time.
+            _directoryReady = false;
         }
     }
 

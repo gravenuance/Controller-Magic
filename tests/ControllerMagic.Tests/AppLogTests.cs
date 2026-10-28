@@ -45,6 +45,7 @@ public class AppLogTests
         try
         {
             log.Warning("disk write test");
+            log.Flush();
 
             Assert.True(File.Exists(path));
             Assert.Contains("disk write test", File.ReadAllText(path), StringComparison.Ordinal);
@@ -52,6 +53,86 @@ public class AppLogTests
         finally
         {
             if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Flush_ManyEntries_WritesAllOfThemInOrder()
+    {
+        string path = TempPath();
+        var log = new AppLog(path, new FakeTimeProvider(DateTimeOffset.UtcNow));
+
+        try
+        {
+            for (int i = 0; i < 200; i++)
+                log.Info($"entry {i:000}");
+            log.Flush();
+
+            string[] lines = File.ReadAllLines(path).Where(l => l.Contains("entry ", StringComparison.Ordinal)).ToArray();
+            Assert.Equal(200, lines.Length);
+            Assert.EndsWith("entry 000", lines[0], StringComparison.Ordinal);
+            Assert.EndsWith("entry 199", lines[^1], StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Flush_ThenLogAgain_WritesTheLaterEntryToo()
+    {
+        string path = TempPath();
+        var log = new AppLog(path, new FakeTimeProvider(DateTimeOffset.UtcNow));
+
+        try
+        {
+            log.Info("before");
+            log.Flush();
+            log.Info("after");
+            log.Flush();
+
+            string text = File.ReadAllText(path);
+            Assert.Contains("before", text, StringComparison.Ordinal);
+            Assert.Contains("after", text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Flush_NothingLogged_ReturnsWithoutCreatingTheFile()
+    {
+        string path = TempPath();
+
+        new AppLog(path, new FakeTimeProvider(DateTimeOffset.UtcNow)).Flush();
+
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
+    public void Info_InAMissingDirectory_CreatesItAndKeepsWriting()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"cm-logdir-{Guid.NewGuid():N}");
+        string path = Path.Combine(dir, "app.log");
+        var log = new AppLog(path, new FakeTimeProvider(DateTimeOffset.UtcNow));
+
+        try
+        {
+            log.Info("first");
+            log.Flush();
+            log.Info("second");
+            log.Flush();
+
+            string text = File.ReadAllText(path);
+            Assert.Contains("first", text, StringComparison.Ordinal);
+            Assert.Contains("second", text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         }
     }
 

@@ -87,17 +87,39 @@ namespace ControllerMagic
 
         public Point CursorPosition => GetCursorPos(out var point) ? point : Point.Empty;
 
-        public Rectangle VirtualScreen => new(
-            GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN),
-            GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN));
+        // Both gates are for the poll thread, which calls these on every cursor move.
+        private static readonly TimeSpan ThrottleInterval = TimeSpan.FromSeconds(1);
+        private readonly IntervalGate _screenRefresh = new(TimeProvider.System, ThrottleInterval);
+        private readonly IntervalGate _keepAwakeThrottle = new(TimeProvider.System, ThrottleInterval);
+        private Rectangle _virtualScreen;
+
+        // Re-read at most once a second: a display change is rare, and a move is made ~125 times a second.
+        public Rectangle VirtualScreen
+        {
+            get
+            {
+                if (_screenRefresh.TryEnter())
+                {
+                    _virtualScreen = new(
+                        GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN),
+                        GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN));
+                }
+
+                return _virtualScreen;
+            }
+        }
 
         public void SetCursorPosition(Point position) => SetCursorPos(position.X, position.Y);
 
         private bool _keepAwakeFailureLogged;
 
         // Without ES_CONTINUOUS this is a one-off reset, so nothing is left held when moves stop.
+        // Once a second is far inside any idle timeout.
         public void KeepDisplayAwake()
         {
+            if (!_keepAwakeThrottle.TryEnter())
+                return;
+
             if (SetThreadExecutionState(ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED) != 0 || _keepAwakeFailureLogged)
                 return;
 

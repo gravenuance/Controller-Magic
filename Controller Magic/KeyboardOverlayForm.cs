@@ -64,9 +64,39 @@
             _timer.Tick += (_, __) =>
             {
                 _lastTimerTickTimestamp = _clock.GetTimestamp();
-                if (_repaintGate.NeedsRepaint(OverlayFrame.Of(_poller)))
-                    Invalidate();
+                RequestRepaintIfChanged();
             };
+        }
+
+        // What the next paint draws, fixed when it is requested: the poll thread can move on before
+        // WM_PAINT arrives, and a partial repaint of a newer frame would leave the rest stale.
+        private OverlayFrame _drawFrame;
+
+        private void RequestRepaintIfChanged()
+        {
+            var frame = OverlayFrame.Of(_poller);
+            if (!_repaintGate.NeedsRepaint(frame))
+                return;
+
+            var dirty = _repaintGate.DirtyAreas(frame, ClientSize.Width / 2f, ClientSize.Height / 2f);
+            _drawFrame = frame;
+            if (dirty is null)
+            {
+                Invalidate();
+                return;
+            }
+
+            if (dirty.Count == 0)
+                _repaintGate.Painted(frame);
+
+            foreach (var area in dirty)
+                Invalidate(area);
+        }
+
+        private void InvalidateAll()
+        {
+            _drawFrame = OverlayFrame.Of(_poller);
+            Invalidate();
         }
 
         // The overlay must never take focus - keys it types have to land in the app underneath.
@@ -85,7 +115,7 @@
 
             _lastTimerTickTimestamp = _clock.GetTimestamp();
             _timer.Start();
-            Invalidate();
+            InvalidateAll();
             Update();
             BeginInvoke(() => Opacity = 1);
         }
@@ -138,7 +168,7 @@
         private async Task<OverlayProblem?> CheckAfterFramesAsync()
         {
             int paintsBefore = _keyboardPaintCount;
-            Invalidate();
+            InvalidateAll();
             await Task.Delay(VerifyDelay, _clock).ConfigureAwait(true);
             if (!_poller.KeyboardMode)
                 return null;
@@ -170,7 +200,7 @@
             }
 
             OverlayWindowProbe.BringToTopmost(Handle);
-            Invalidate();
+            InvalidateAll();
             Update();
         }
 
@@ -193,7 +223,7 @@
             var g = e.Graphics;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            var frame = OverlayFrame.Of(_poller);
+            var frame = _drawFrame;
             _repaintGate.Painted(frame);
             if (!frame.KeyboardMode)
                 return;
@@ -206,17 +236,13 @@
 
             float cx = ClientSize.Width / 2f;
             float cy = ClientSize.Height / 2f;
-            float baseRadius = 120f; // a bit farther out
 
-            float tileSize = 40f;
+            // Tiles outside the invalidated area are already on screen.
+            var dirty = e.ClipRectangle;
 
             for (int sector = 0; sector < 8; sector++)
             {
                 bool isHot = (sector == hot);
-
-                double angleDeg = 90.0 + sector * 45.0;
-
-                double angleRad = angleDeg * Math.PI / 180.0;
 
                 for (int index = 0; index < 4; index++)
                 {
@@ -225,19 +251,10 @@
                     if (entry.Vk == 0)
                         continue;
                     bool isSelectedSlot = (index == slot);
-                    float inner = baseRadius + index * (tileSize + 4f);
-                    float outer = inner + tileSize;
-                    float midR = (inner + outer) / 2f;
 
-                    float x = cx + (float)(midR * Math.Cos(angleRad));
-                    float y = cy - (float)(midR * Math.Sin(angleRad));
-
-                    var rect = new RectangleF(
-                        x - tileSize / 2f,
-                        y - tileSize / 2f,
-                        tileSize,
-                        tileSize
-                    );
+                    var rect = WheelTiles.Bounds(sector, index, cx, cy);
+                    if (!dirty.IntersectsWith(Rectangle.Ceiling(RectangleF.Inflate(rect, WheelTiles.Margin, WheelTiles.Margin))))
+                        continue;
 
                     g.FillEllipse(isHot && isSelectedSlot ? _hotBrush : _normalBrush, rect);
                     g.DrawEllipse(_pen, rect);

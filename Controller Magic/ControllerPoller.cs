@@ -383,6 +383,9 @@ namespace ControllerMagic
             [DllImport("user32.dll")]
             private static extern int GetWindowTextLength(IntPtr hWnd);
 
+            [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+            private static extern int GetClassName(IntPtr hWnd, char[] lpClassName, int nMaxCount);
+
             // Windows 10+ pads a normal (bordered/maximized) window's GetWindowRect with an
             // invisible ~8px resize border on each side that isn't visually real - a maximized
             // video player can be genuinely edge-to-edge on screen while GetWindowRect reports it
@@ -423,13 +426,32 @@ namespace ControllerMagic
                 if (now - _lastCheckTick < RecheckIntervalMs)
                     return _lastResult;
                 _lastCheckTick = now;
-                _lastResult = ComputeIsBlockedFullscreen();
+                _lastResult = ComputeIsBlockedFullscreen(out IntPtr hWnd, out string? name);
+                LogBlockingWindowChange(_lastResult ? hWnd : IntPtr.Zero, name);
                 return _lastResult;
             }
 
-            private static bool ComputeIsBlockedFullscreen()
+            private static IntPtr _blockingWindow;
+
+            // Which window took the pad away is otherwise invisible after the fact; logged only
+            // when it changes, by process and window class (the title can hold personal data).
+            private static void LogBlockingWindowChange(IntPtr blockingWindow, string? name)
             {
-                IntPtr hWnd = GetForegroundWindow();
+                if (blockingWindow == _blockingWindow)
+                    return;
+
+                if (blockingWindow == IntPtr.Zero)
+                    AppLog.Default.Info("FullscreenHelper: controller input resumed");
+                else
+                    AppLog.Default.Info($"FullscreenHelper: controller input suspended for fullscreen window of {name ?? "an unreadable process"} (class {GetWindowClass(blockingWindow)})");
+
+                _blockingWindow = blockingWindow;
+            }
+
+            private static bool ComputeIsBlockedFullscreen(out IntPtr hWnd, out string? name)
+            {
+                name = null;
+                hWnd = GetForegroundWindow();
                 if (hWnd == IntPtr.Zero || hWnd == DesktopHandle || hWnd == ShellHandle)
                     return false;
 
@@ -451,10 +473,10 @@ namespace ControllerMagic
                 }
 
                 _ = GetWindowThreadProcessId(hWnd, out int pid);
-                string? name = ProcessNames.NameFor(hWnd, pid);
+                name = ProcessNames.NameFor(hWnd, pid);
                 if (name != null)
                 {
-                    string title = GetWindowTitle(hWnd);
+                    var title = GetWindowTitle(hWnd);
 
                     _watching = ContainsAny(name, AppSettings.Instance.WatchedProcessNames);
 
@@ -490,27 +512,40 @@ namespace ControllerMagic
             }
 
             // Case-insensitive, ignoring blank and padded entries, without allocating per entry.
-            private static bool ContainsAny(string text, List<string> needles)
+            private static bool ContainsAny(ReadOnlySpan<char> text, List<string> needles)
             {
                 foreach (string needle in needles)
                 {
                     var trimmed = needle.AsSpan().Trim();
-                    if (!trimmed.IsEmpty && text.AsSpan().Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+                    if (!trimmed.IsEmpty && text.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
                         return true;
                 }
 
                 return false;
             }
 
-            private static string GetWindowTitle(IntPtr hWnd)
+            private static string GetWindowClass(IntPtr hWnd)
+            {
+                var buffer = new char[256];
+                int copied = GetClassName(hWnd, buffer, buffer.Length);
+                return copied > 0 ? new string(buffer, 0, copied) : "unknown";
+            }
+
+            // Only the poll thread calls this.
+            private static char[] _titleBuffer = new char[256];
+
+            // Valid until the next call: reusing one buffer saves a char[] and a string per check.
+            private static ReadOnlySpan<char> GetWindowTitle(IntPtr hWnd)
             {
                 int length = GetWindowTextLength(hWnd);
                 if (length == 0)
-                    return string.Empty;
+                    return default;
 
-                var buffer = new char[length + 1];
-                int copied = GetWindowText(hWnd, buffer, buffer.Length);
-                return copied > 0 ? new string(buffer, 0, copied) : string.Empty;
+                if (_titleBuffer.Length < length + 1)
+                    _titleBuffer = new char[length + 1];
+
+                int copied = GetWindowText(hWnd, _titleBuffer, _titleBuffer.Length);
+                return copied > 0 ? _titleBuffer.AsSpan(0, copied) : default;
             }
         }
 
@@ -552,12 +587,21 @@ namespace ControllerMagic
         private const int PollIntervalMs = 8;
         private const int FullscreenPollIntervalMs = 100;
         // With no controller there's nothing to be smooth for; a new one is still read within this.
-        private const int IdlePollIntervalMs = 100;
+        private const int NoPadPollIntervalMs = 250;
+        // A pad nobody touches is read at about 30 Hz; the first input after that waits at most one such tick.
+        private const int RestingPollIntervalMs = 33;
+        private const int RestAfterMs = 2000;
+
+        private readonly AdaptivePollRate _pollRate = new(PollIntervalMs, RestingPollIntervalMs, RestAfterMs);
+
+        // Whether the last full tick found a pad. While false, nothing needs the fullscreen check
+        // or the taskbar follower, unless the passthrough has a pad to unhide for a game.
+        private bool _padPresent;
 
         // Returns how long to wait before the next tick.
         private int RunTick(Sdl2PadReader sdlPadReader)
         {
-            bool blockedFullscreen = FullscreenHelper.IsBlockedFullscreen();
+            bool blockedFullscreen = (_padPresent || _passthrough.HidesPad) && FullscreenHelper.IsBlockedFullscreen();
             _passthrough.SetFullscreenSuspended(blockedFullscreen);
             var mode = ControllerLights.ComputeMode(blockedFullscreen, _keyboardMode, sdlPadReader.Battery);
             if (ControllerLights.LightbarFor(mode) is { } lightbar)
@@ -590,6 +634,18 @@ namespace ControllerMagic
 
             ObserveIdle(source, pad, sdlPadReader.BluetoothAddress);
 
+            // A pad that arrives while a game is fullscreen must be left to the game from its first tick.
+            if (gotPad && !_padPresent && FullscreenHelper.IsBlockedFullscreen())
+            {
+                _padPresent = true;
+                _idlePowerOff.Reset();
+                StandDownForFullscreen();
+                return FullscreenPollIntervalMs;
+            }
+
+            _padPresent = gotPad;
+            bool padInUse = gotPad && IdlePowerOff.IsActive(pad, new IdleThresholds(StickDeadZone, ScrollDeadZone));
+
             if (gotPad)
             {
                 pad.Buttons = FilterButtons(pad.Buttons);
@@ -611,11 +667,25 @@ namespace ControllerMagic
                 HandlePadLost();
             }
 
-            if (AppSettings.Instance.TaskbarAppsFollowCursor)
+            // An armed follower is still mid-launch, so it keeps watching after the pad is gone.
+            if ((gotPad || _taskbarFollower.IsArmed) && AppSettings.Instance.TaskbarAppsFollowCursor)
                 _taskbarFollower.Tick();
 
             _passthrough.Tick(pad, gotPad, _connection.Identity, _connection.Serial);
-            return gotPad ? PollIntervalMs : IdlePollIntervalMs;
+            return NextPollInterval(gotPad, padInUse);
+        }
+
+        private int NextPollInterval(bool gotPad, bool padInUse)
+        {
+            if (!gotPad)
+            {
+                _pollRate.Reset();
+                return NoPadPollIntervalMs;
+            }
+
+            // Held keyboard-mode state and a virtual pad a game is reading both need the fast rate.
+            bool active = padInUse || _keyboardMode || _passthrough.IsForwarding;
+            return _pollRate.Next(active, Environment.TickCount64);
         }
 
         // Only SDL pads can be switched off; an Xbox pad, or none, starts the wait over.

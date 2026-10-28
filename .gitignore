@@ -365,5 +365,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-# Claude Code agent worktrees (temporary checkouts)
-.claude/worktrees/
+# Claude Code's own files
+CLAUDE.md
+.claude/

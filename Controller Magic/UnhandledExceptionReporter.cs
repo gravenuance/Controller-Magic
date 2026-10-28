@@ -37,6 +37,8 @@ internal sealed class UnhandledExceptionReporter(AppLog log, TimeProvider clock,
     public void ReportFatal(Exception? ex)
     {
         log.Error("Unhandled exception", ex);
+        // The process is about to end, and the dialog below can outlast it.
+        log.Flush();
         NotifyOnce(ref _crashNoticeShown, ExceptionNotice.Crashed);
     }
 

@@ -20,8 +20,14 @@ public sealed class AppSettingsTests : IDisposable
     {
         foreach (var store in _stores)
             store.Dispose();
+        // The log is written in the background; a write landing mid-delete would fail or recreate the folder.
+        Log.Flush();
         Directory.Delete(_dir, recursive: true);
     }
+
+    private AppLog? _log;
+
+    private AppLog Log => _log ??= new AppLog(Path.Combine(_dir, "app.log"), _clock);
 
     private string SettingsPath => Path.Combine(_dir, "settings.json");
     private string LegacyPath => Path.Combine(_dir, "legacy", "settings.json");
@@ -29,7 +35,7 @@ public sealed class AppSettingsTests : IDisposable
 
     private SettingsStore CreateStore()
     {
-        var store = new SettingsStore(SettingsPath, LegacyPath, _clock, new AppLog(Path.Combine(_dir, "app.log"), _clock));
+        var store = new SettingsStore(SettingsPath, LegacyPath, _clock, Log);
         _stores.Add(store);
         return store;
     }
@@ -144,8 +150,10 @@ public sealed class AppSettingsTests : IDisposable
         string logPath = Path.Combine(_dir, "app.log");
 
         CreateStore().Load();
+        Log.Flush();
         int warningsAfterFirstLoad = File.ReadAllLines(logPath).Count(line => line.Contains("out-of-range", StringComparison.Ordinal));
         var reloaded = CreateStore().Load();
+        Log.Flush();
         int warningsAfterSecondLoad = File.ReadAllLines(logPath).Count(line => line.Contains("out-of-range", StringComparison.Ordinal));
 
         Assert.Equal(1, warningsAfterFirstLoad);
@@ -450,5 +458,55 @@ public sealed class AppSettingsTests : IDisposable
         store.Dispose();
 
         Assert.Equal(4444, ReadJson(SettingsPath).GetProperty("StickDeadZone").GetInt32());
+    }
+
+    [Fact]
+    public void Load_NoLastSettingsPage_OpensOnGeneral()
+    {
+        var settings = CreateStore().Load();
+
+        Assert.Equal(SettingsPage.General, settings.LastSettingsPage);
+    }
+
+    [Fact]
+    public void LastSettingsPage_SurvivesASaveAndLoad()
+    {
+        var settings = CreateStore().Load();
+        settings.LastSettingsPage = SettingsPage.Deadzones;
+        settings.Save();
+
+        Assert.Equal("Deadzones", ReadJson(SettingsPath).GetProperty("LastSettingsPage").GetString());
+        Assert.Equal(SettingsPage.Deadzones, CreateStore().Load().LastSettingsPage);
+    }
+
+    [Fact]
+    public void Parse_KnownPageName_IsKept()
+    {
+        var parsed = SettingsStore.Parse("""{"LastSettingsPage": "FullScreenApps"}""");
+
+        Assert.Equal(SettingsPage.FullScreenApps, parsed.Settings.LastSettingsPage);
+        Assert.Empty(parsed.DroppedFields);
+        Assert.Empty(parsed.CorrectedFields);
+    }
+
+    [Fact]
+    public void Parse_UnknownPageName_FallsBackToGeneralKeepingOtherValues()
+    {
+        var parsed = SettingsStore.Parse("""{"LastSettingsPage": "Sound", "StickDeadZone": 1234}""");
+
+        Assert.Equal(SettingsPage.General, parsed.Settings.LastSettingsPage);
+        Assert.Equal(1234, parsed.Settings.StickDeadZone);
+        Assert.Equal(["LastSettingsPage"], parsed.DroppedFields);
+    }
+
+    [Theory]
+    [InlineData("99")]
+    [InlineData("-1")]
+    public void Parse_OutOfRangePageNumber_FallsBackToGeneral(string value)
+    {
+        var parsed = SettingsStore.Parse($$"""{"LastSettingsPage": {{value}}}""");
+
+        Assert.Equal(SettingsPage.General, parsed.Settings.LastSettingsPage);
+        Assert.Equal(["LastSettingsPage"], parsed.CorrectedFields);
     }
 }

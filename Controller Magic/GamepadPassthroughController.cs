@@ -138,6 +138,12 @@ internal sealed class GamepadPassthroughController : IDisposable
 
     public void SetFullscreenSuspended(bool suspended) => _fullscreenSuspended = suspended;
 
+    // Whether the pad is, or is about to be, hidden: a fullscreen game must get it back even before it arrives.
+    public bool HidesPad => _cloaked || ComputeShouldBeActive(_settingOn(), _driversReady, fullscreenSuspended: false);
+
+    // A game reads the pad through the virtual one, so a slow poll would delay its input.
+    public bool IsForwarding => _vigem.IsConnected;
+
     // The XInput slots the virtual pad may occupy, a bit each - ControllerPoller feeds this to
     // XInputPadReader so its slot-scanning never reads this app's own virtual pad back as if it
     // were a real controller.

@@ -65,6 +65,9 @@ namespace ControllerMagic
         // Moves the window a controller click on the taskbar brings up to the monitor under the cursor.
         public bool TaskbarAppsFollowCursor { get; set; } = true;
 
+        // The Settings page shown last, reopened on the next visit.
+        public SettingsPage LastSettingsPage { get; set; } = SettingsPages.Default;
+
         // Exponent applied to the normalized stick magnitude (0..1) before scaling cursor speed.
         // >1 gives a gradual ramp - slow/precise near center, faster toward full deflection.
         // <1 does the opposite (snaps to near-max speed on almost any push), which is why the
@@ -118,6 +121,11 @@ namespace ControllerMagic
             StickRampSeconds = CheckRange(StickRampSeconds, defaults.StickRampSeconds, StickRampSecondsRange, nameof(StickRampSeconds), corrected);
             TouchpadSpeed = CheckRange(TouchpadSpeed, TouchpadSpeedRange, nameof(TouchpadSpeed), corrected);
             ControllerIdleOffMinutes = CheckRange(ControllerIdleOffMinutes, ControllerIdleOffMinutesRange, nameof(ControllerIdleOffMinutes), corrected);
+            if (!SettingsPages.IsKnown(LastSettingsPage))
+            {
+                corrected.Add(nameof(LastSettingsPage));
+                LastSettingsPage = SettingsPages.Default;
+            }
             WatchedProcessNames = CheckList(WatchedProcessNames, defaults.WatchedProcessNames, nameof(WatchedProcessNames), corrected);
             StreamingServiceNames = CheckList(StreamingServiceNames, defaults.StreamingServiceNames, nameof(StreamingServiceNames), corrected);
 

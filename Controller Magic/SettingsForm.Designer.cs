@@ -22,7 +22,7 @@ namespace ControllerMagic
         #region Windows Form Designer generated code
 
         // Everything visible is built at runtime by SettingsForm.BuildLayout() and its helpers -
-        // titlebar, status row, and cards are all custom-drawn, so there's nothing left for the
+        // titlebar, status row, navigation and page cards are all custom-drawn, so there's nothing left for the
         // designer to lay out ahead of time.
         private void InitializeComponent()
         {
@@ -32,7 +32,7 @@ namespace ControllerMagic
             //
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = Theme.Bg;
-            this.ClientSize = new System.Drawing.Size(520, 400);
+            this.ClientSize = new System.Drawing.Size(660, 400);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Name = "SettingsForm";

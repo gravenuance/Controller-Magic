@@ -16,7 +16,15 @@ namespace ControllerMagic
         public static readonly Color Good = Color.FromArgb(0x5F, 0xB8, 0x8A);
         public static readonly Color TitlebarBg = Color.FromArgb(0x17, 0x19, 0x1E);
 
-        public static readonly Font UiFont = new("Segoe UI", 9.5f, FontStyle.Regular);
+        // Accent at about 14% over Surface: the selected navigation item's fill, readable with Ink on top.
+        public static readonly Color NavSelected = Color.FromArgb(0x38, 0x31, 0x28);
+
+        // Settings window layout, in unscaled pixels.
+        public const int NavWidth = 168;
+        public const int NavItemHeight = 36;
+        public const int NavPadding = 8;
+
+        public static readonly Font UiFont =new("Segoe UI", 9.5f, FontStyle.Regular);
         public static readonly Font UiFontBold = new("Segoe UI Semibold", 9.5f, FontStyle.Regular);
         public static readonly Font BodyFont = new("Segoe UI", 8.5f, FontStyle.Regular);
         public static readonly Font CaptionFont = new("Segoe UI Semibold", 7.75f, FontStyle.Regular);
@@ -29,6 +37,11 @@ namespace ControllerMagic
         // Single-color line-style glyphs at a small size read as "icon", not "text", which is what
         // the tray menu's item icons want without needing to ship or hand-draw bitmap assets.
         public static readonly Font IconFont = new("Segoe MDL2 Assets", 10f, FontStyle.Regular);
+
+        // Fluent Icons ships with Windows 11 only; MDL2 has the same code points on Windows 10.
+        public static readonly Font NavIconFont = new(
+            FontFamily.Families.Any(family => family.Name == "Segoe Fluent Icons") ? "Segoe Fluent Icons" : "Segoe MDL2 Assets",
+            11f, FontStyle.Regular);
 
         // Properties.Resources.Controller deserializes a brand-new native icon (a real GDI/USER
         // handle) from the embedded .resx data on every access - it's a resource *getter*, not a

@@ -54,7 +54,6 @@ namespace ControllerMagic
         }
 
         private const int OuterMargin = 16;
-        private const int CardGap = 12;
         private const int CardPadding = 14;
         private const int VizWidth = 64;
         private const int VizHeight = 34;
@@ -76,10 +75,22 @@ namespace ControllerMagic
         // Each control's refresh for when the kept-alive window is shown again.
         private readonly List<Action> _onShown = [];
 
+        // Every page is built once and kept; selecting one only toggles which card is visible.
+        private readonly Dictionary<SettingsPage, CardPanel> _pages = [];
+        private readonly SettingsPage[] _pageOrder = Enum.GetValues<SettingsPage>();
+
         private int _layoutY;
         private int _nextTabIndex;
+        private int _tallestPage;
         private CardPanel? _card;
+        private SettingsPage _cardPage;
         private int _cardY;
+
+        private NavList? _nav;
+        private Panel? _pageHost;
+        private SettingsPage _shownPage;
+
+        internal SettingsPage ShownPage => _shownPage;
 
         private Panel? _statusDot;
         private Label? _statusLabel;
@@ -122,10 +133,9 @@ namespace ControllerMagic
 
             var titleBar = BuildTitleBar();
             BuildStatusRow();
+            BuildBody();
 
-            _layoutY += 12;
-
-            BeginCard(null);
+            BeginCard(SettingsPage.General);
             AddStartupToggle();
             AddToggle(
                 "Open taskbar apps on the cursor's screen",
@@ -133,11 +143,11 @@ namespace ControllerMagic
                 value => AppSettings.Instance.TaskbarAppsFollowCursor = value);
             EndCard();
 
-            BeginCard("Guide button");
+            BeginCard(SettingsPage.GuideButton);
             AddHidHideToggle();
             EndCard();
 
-            BeginCard("Mouse movement");
+            BeginCard(SettingsPage.Mouse);
             AddSlider(
                 name: "Deadzone",
                 range: AppSettings.StickDeadZoneRange,
@@ -179,7 +189,7 @@ namespace ControllerMagic
                     (double)(AppSettings.TouchpadSpeedRange.Max - AppSettings.TouchpadSpeedRange.Min));
             EndCard();
 
-            BeginCard("Other deadzones");
+            BeginCard(SettingsPage.Deadzones);
             AddSlider(
                 name: "Scroll",
                 range: AppSettings.ScrollDeadZoneRange,
@@ -194,7 +204,7 @@ namespace ControllerMagic
                 formatReadout: v => v.ToString());
             EndCard();
 
-            BeginCard("Controller");
+            BeginCard(SettingsPage.Controller);
             AddSlider(
                 name: "Turn off when idle",
                 range: AppSettings.ControllerIdleOffMinutesRange,
@@ -203,7 +213,7 @@ namespace ControllerMagic
                 formatReadout: v => v == 0 ? "Never" : $"{v} min");
             EndCard();
 
-            BeginCard("Full-screen apps");
+            BeginCard(SettingsPage.FullScreenApps);
             AddChipField(
                 "Keep receiving input from",
                 () => AppSettings.Instance.WatchedProcessNames,
@@ -215,11 +225,12 @@ namespace ControllerMagic
             EndCard();
 
             LayoutSliderRows();
+            FitBody();
+            ShowInitialPage();
 
-            // Last in tab order, so first focus lands on a setting rather than on Close.
+            // Tab order: navigation, then the page, then Close last.
             titleBar.TabIndex = Controls.Count;
 
-            ClientSize = new Size(ClientSize.Width, _layoutY + OuterMargin);
             RefreshStatus();
         }
 
@@ -339,8 +350,10 @@ namespace ControllerMagic
             if (_statusLabel == null || _statusDot == null) return;
 
             bool connected = _poller.IsControllerConnected;
-            _statusDot.BackColor = connected ? Theme.Good : Theme.Muted;
-            _statusDot.Invalidate();
+            Color dotColor = connected ? Theme.Good : Theme.Muted;
+            // Assigning a different colour repaints the dot; the same one must not, as this ticks every 500 ms.
+            if (_statusDot.BackColor != dotColor)
+                _statusDot.BackColor = dotColor;
             _statusLabel.Text = _poller.ControllerStatusText;
             _statusLabel.ForeColor = connected ? Theme.Ink : Theme.Muted;
 
@@ -359,40 +372,116 @@ namespace ControllerMagic
             _hidHideToggle.AccessibleDescription = show ? ReconnectHint : null;
         }
 
+        // ============ navigation and pages ============
+
+        private void BuildBody()
+        {
+            _pageHost = new Panel
+            {
+                Location = new Point(Theme.NavWidth, _layoutY),
+                Size = new Size(ClientSize.Width - Theme.NavWidth, 0),
+                BackColor = Theme.Bg,
+                AccessibleName = "Settings page",
+            };
+            EnableDragging(_pageHost);
+
+            _nav = new NavList
+            {
+                Location = new Point(0, _layoutY),
+                Width = Theme.NavWidth,
+                TabIndex = 0,
+                AccessibleName = "Settings pages",
+            };
+            _nav.SetItems([.. _pageOrder.Select(page => new NavList.Item(SettingsPages.Title(page), SettingsPages.Glyph(page)))]);
+            _nav.SelectedIndex = Array.IndexOf(_pageOrder, AppSettings.Instance.LastSettingsPage);
+
+            Controls.Add(_nav);
+            Controls.Add(_pageHost);
+        }
+
+        // Window height is the tallest page, so none scrolls; a screen too short for that scrolls the page area instead.
+        private void FitBody()
+        {
+            if (_nav == null || _pageHost == null) return;
+
+            int chrome = _layoutY + Height - ClientSize.Height;
+            int workArea = Screen.FromPoint(Cursor.Position).WorkingArea.Height;
+            var fit = SettingsWindowFit.Compute(Math.Max(_tallestPage, NavList.ContentHeight(_pageOrder.Length)), chrome, workArea);
+
+            ClientSize = new Size(ClientSize.Width, _layoutY + fit.BodyHeight);
+            _nav.Height = fit.BodyHeight;
+            _pageHost.Height = fit.BodyHeight;
+            if (fit.Scrolls)
+            {
+                // Pages are laid out to the full width, so keep the scrollbar from also adding a horizontal one.
+                _pageHost.HorizontalScroll.Enabled = false;
+                _pageHost.HorizontalScroll.Visible = false;
+                _pageHost.AutoScroll = true;
+            }
+        }
+
+        private void ShowInitialPage()
+        {
+            if (_nav == null) return;
+
+            _shownPage = _pageOrder[_nav.SelectedIndex];
+            foreach (var (page, card) in _pages)
+                card.Visible = page == _shownPage;
+
+            // Subscribed only now, so building the window doesn't count as the user picking a page.
+            _nav.SelectedIndexChanged += (_, __) => OnPageSelected();
+        }
+
+        private void OnPageSelected()
+        {
+            if (_nav == null || _pageHost == null) return;
+
+            var page = _pageOrder[_nav.SelectedIndex];
+            if (page == _shownPage)
+                return;
+
+            _pages[page].Visible = true;
+            _pages[_shownPage].Visible = false;
+            _shownPage = page;
+            _pageHost.AutoScrollPosition = Point.Empty;
+
+            AppSettings.Instance.LastSettingsPage = page;
+            RequestSave();
+        }
+
         // ============ cards ============
 
-        private void BeginCard(string? title)
+        private void BeginCard(SettingsPage page)
         {
+            string title = SettingsPages.Title(page);
             _card = new CardPanel
             {
-                Location = new Point(OuterMargin, _layoutY),
-                Width = ClientSize.Width - OuterMargin * 2,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Location = new Point(OuterMargin, OuterMargin),
+                Width = ClientSize.Width - Theme.NavWidth - OuterMargin * 2,
+                AccessibleName = title,
             };
+            _cardPage = page;
             _cardY = CardPadding;
 
-            if (title != null)
+            var head = new Label
             {
-                var head = new Label
-                {
-                    Text = title.ToUpperInvariant(),
-                    AutoSize = true,
-                    Location = new Point(CardPadding, _cardY),
-                    Font = Theme.CaptionFont,
-                    ForeColor = Theme.Muted,
-                };
-                _card.Controls.Add(head);
-                _cardY += 22;
-                _card.AccessibleName = title;
-            }
+                Text = title.ToUpperInvariant(),
+                AutoSize = true,
+                Location = new Point(CardPadding, _cardY),
+                Font = Theme.CaptionFont,
+                ForeColor = Theme.Muted,
+            };
+            _card.Controls.Add(head);
+            _cardY += 22;
         }
 
         private void EndCard()
         {
-            if (_card == null) return;
+            if (_card == null || _pageHost == null) return;
             _card.Height = _cardY + CardPadding - 4;
-            Controls.Add(_card);
-            _layoutY += _card.Height + CardGap;
+            _pageHost.Controls.Add(_card);
+            _pages.Add(_cardPage, _card);
+            _tallestPage = Math.Max(_tallestPage, _card.Height + OuterMargin * 2);
             _card = null;
         }
 
@@ -471,7 +560,7 @@ namespace ControllerMagic
         private static string WiderText(string a, string b, Font font) =>
             TextRenderer.MeasureText(a, font).Width >= TextRenderer.MeasureText(b, font).Width ? a : b;
 
-        // One pass once every row exists, so names, sliders and values line up across all cards.
+        // One pass once every row exists, so names, sliders and values stay in the same columns on every page.
         private void LayoutSliderRows()
         {
             if (_sliderRows.Count == 0)

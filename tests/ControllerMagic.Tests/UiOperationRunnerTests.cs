@@ -6,14 +6,19 @@ namespace ControllerMagic.Tests;
 public sealed class UiOperationRunnerTests : IDisposable
 {
     private readonly string _logPath = Path.Combine(Path.GetTempPath(), $"cm-ui-{Guid.NewGuid():N}.log");
+    private readonly AppLog _log;
     private readonly UiOperationRunner _runner;
 
-    public UiOperationRunnerTests() =>
-        _runner = new UiOperationRunner(new AppLog(_logPath, TimeProvider.System));
+    public UiOperationRunnerTests()
+    {
+        _log = new AppLog(_logPath, TimeProvider.System);
+        _runner = new UiOperationRunner(_log);
+    }
 
     public void Dispose()
     {
         _runner.Dispose();
+        _log.Flush();
         File.Delete(_logPath);
     }
 
@@ -23,6 +28,8 @@ public sealed class UiOperationRunnerTests : IDisposable
         string? shown = null;
 
         await _runner.RunAsync("install drivers", _ => throw new InvalidOperationException("boom"), text => shown = text);
+
+        _log.Flush();
 
         Assert.NotNull(shown);
         Assert.Contains("install drivers", await File.ReadAllTextAsync(_logPath, TestContext.Current.CancellationToken), StringComparison.Ordinal);

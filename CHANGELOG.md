@@ -8,6 +8,17 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-10-28
+
+### Changed
+- Settings now shows one page at a time, picked from a list on the left, so the window is
+  about a third of its old height. It reopens on the page you last used.
+- A controller you aren't touching is read about 30 times a second instead of 125, and with
+  no controller connected the app checks 4 times a second instead of 10, to save power.
+- The app is no longer compressed, so it doesn't unpack itself into memory at start; the
+  download is larger (about 127 MB).
+- The on-screen keyboard redraws only the keys that change as you move the stick.
+
 ## [1.12.0] - 2026-10-01
 
 ### Added

@@ -20,6 +20,19 @@ namespace ControllerMagic
         [STAThread]
         static int Main(string[] args)
         {
+            try
+            {
+                return Run(args);
+            }
+            finally
+            {
+                // The log is written by a background task that the exit would cut short.
+                AppLog.Default.Flush();
+            }
+        }
+
+        private static int Run(string[] args)
+        {
             // Checked before the single-instance mutex: the elevated driver installer is a second
             // copy of the app launched by the running one, and must neither be blocked by it nor
             // start a tray icon of its own.
