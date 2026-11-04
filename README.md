@@ -13,7 +13,9 @@ remote outside of fullscreen games — a background tray app, not a window you k
   horizontal).
 - **Touchpad mouse** — on a DualSense or DualShock 4 the touchpad works like a laptop's: slide to
   move the cursor, tap to click (tap twice to double-click), hold a finger still to right-click,
-  and press the pad down to hold the left button for dragging.
+  and press the pad down to hold the left button for dragging. While you use a stick, a button
+  or a trigger, and for a moment after, the touchpad is ignored, so a resting thumb can't move
+  the cursor.
 - **On-screen keyboard** — click the left stick to bring up a radial daisywheel keyboard, driven
   entirely by the controller: left stick picks a direction, the shoulder buttons and triggers
   cycle through letters and layers, A commits. On a DualSense or DualShock 4 the touchpad drives
@@ -29,6 +31,8 @@ remote outside of fullscreen games — a background tray app, not a window you k
 - **Sound output switching** — hold the right trigger and press D-pad Up or Down to switch
   Windows to the next or previous connected sound output (speakers, headset, a monitor's
   speakers). The name of the output now in use shows briefly at the bottom of the screen.
+- **Volume** — hold the left trigger and press D-pad Up or Down to turn the volume up or down;
+  keep the D-pad held to keep changing it.
 - **Controller lights** — on a DualSense or DualShock 4, the lightbar shows orange for mouse
   control, green while the on-screen keyboard is open, and red for mouse control on low battery.
   A fullscreen game keeps its own lightbar colour. A DualSense's white LEDs under the touchpad

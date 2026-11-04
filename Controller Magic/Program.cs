@@ -73,6 +73,11 @@ namespace ControllerMagic
                 e.SetObserved();
             };
 
+            // Marks where each run begins in the log, and the path it runs from: a run started
+            // through a link that's later removed can't load its remaining assemblies.
+            AppLog.Default.Info($"Controller Magic {Application.ProductVersion} starting from {Application.ExecutablePath}");
+            _resolvedExecutablePath = FinalPath.TryResolve(Application.ExecutablePath);
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
@@ -92,9 +97,15 @@ namespace ControllerMagic
             return context.RestartRequested;
         }
 
+        // Resolved at start, while the path launched from still works.
+        private static string? _resolvedExecutablePath;
+
+        // The path launched from goes away if it was a link that's since been removed.
         private static void Relaunch()
         {
-            string exe = Application.ExecutablePath;
+            string exe = File.Exists(Application.ExecutablePath) || _resolvedExecutablePath is null
+                ? Application.ExecutablePath
+                : _resolvedExecutablePath;
             try
             {
                 Process.Start(exe)?.Dispose();

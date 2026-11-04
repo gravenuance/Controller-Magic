@@ -79,6 +79,51 @@ public class ReportWatchdogTests
         Assert.False(watchdog.IsStale(5));
     }
 
+    // Regression: a pad sending reports without the stamp was held neutral for the whole connection.
+    [Fact]
+    public void IsStale_InputChangesUnderAFrozenStamp_IsLiveAndStopsJudgingByTheStamp()
+    {
+        var watchdog = NewWatchdog();
+        watchdog.IsStale(5);
+        _clock.Advance(TimeSpan.FromSeconds(2));
+
+        bool whenInputChanged = watchdog.IsStale(5, inputChanged: true);
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        bool afterwards = watchdog.IsStale(5, inputChanged: false);
+
+        Assert.False(whenInputChanged);
+        Assert.False(afterwards);
+        Assert.True(watchdog.IgnoresStamps);
+    }
+
+    [Fact]
+    public void IsStale_InputChangesWithinTheLimit_KeepsJudgingByTheStamp()
+    {
+        var watchdog = NewWatchdog();
+        watchdog.IsStale(5);
+        watchdog.IsStale(5, inputChanged: true);
+
+        _clock.Advance(StaleAfter);
+
+        Assert.True(watchdog.IsStale(5));
+        Assert.False(watchdog.IgnoresStamps);
+    }
+
+    [Fact]
+    public void Reset_AfterStampsWereIgnored_JudgesByTheStampAgain()
+    {
+        var watchdog = NewWatchdog();
+        watchdog.IsStale(5);
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        watchdog.IsStale(5, inputChanged: true);
+
+        watchdog.Reset();
+        watchdog.IsStale(7);
+        _clock.Advance(StaleAfter);
+
+        Assert.True(watchdog.IsStale(7));
+    }
+
     [Fact]
     public void Constructor_NonPositiveLimit_Throws()
     {

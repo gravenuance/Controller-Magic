@@ -20,6 +20,18 @@ public class ControllerPollerTests
     }
 
     [Theory]
+    [InlineData(true, true, false, VolumeStep.Up)]
+    [InlineData(true, false, true, VolumeStep.Down)]
+    [InlineData(true, true, true, VolumeStep.Up)]
+    [InlineData(false, true, false, null)]
+    [InlineData(false, false, true, null)]
+    [InlineData(true, false, false, null)]
+    internal void VolumeCombo_OnlyLeftTriggerWithUpOrDownHeld_StepsTheVolume(bool ltDown, bool up, bool down, VolumeStep? expected)
+    {
+        Assert.Equal(expected, ControllerPoller.VolumeCombo(ltDown, up, down));
+    }
+
+    [Theory]
     [InlineData(159, false, false)]
     [InlineData(160, false, true)]
     [InlineData(121, true, true)]

@@ -4,6 +4,12 @@ namespace ControllerMagic
 {
     internal readonly record struct WheelSelection(int Sector, int Ring);
 
+    internal enum VolumeStep
+    {
+        Up,
+        Down,
+    }
+
     internal sealed class ControllerPoller : IDisposable
     {
         internal struct KeyEntry
@@ -279,6 +285,12 @@ namespace ControllerMagic
         private bool _ltWasDown;
         private bool _rtWasDown;
 
+        // Holding L2 + D-pad Up/Down keeps stepping the volume, as a held keyboard volume key does.
+        private readonly HoldRepeat _volumeRepeat = new(TimeProvider.System, TimeSpan.FromMilliseconds(400), TimeSpan.FromMilliseconds(100));
+        private VolumeStep? _volumeHeld;
+
+        private readonly TouchpadGate _touchpadGate = new(TimeProvider.System, TouchpadGate.DefaultQuietTime);
+
         public bool KeyboardMode => _keyboardMode;
         public int KeyboardLayer => _keyboardLayer;
         public int CurrentSector => _currentSector;
@@ -551,6 +563,8 @@ namespace ControllerMagic
 
         private void Loop()
         {
+            _passthrough.AllowListBeforeDeviceScan();
+
             // Constructed and used only on this thread: SDL's event queue is meant to be pumped
             // consistently from a single thread for its whole lifetime.
             using var sdlPadReader = new Sdl2PadReader(TimeProvider.System);
@@ -588,8 +602,9 @@ namespace ControllerMagic
         private const int FullscreenPollIntervalMs = 100;
         // With no controller there's nothing to be smooth for; a new one is still read within this.
         private const int NoPadPollIntervalMs = 250;
-        // A pad nobody touches is read at about 30 Hz; the first input after that waits at most one such tick.
-        private const int RestingPollIntervalMs = 33;
+        // A pad nobody touches is read at about 60 Hz: a press must outlast one such tick plus one fast
+        // one to pass the debounce, so a slower rest would miss quick taps.
+        private const int RestingPollIntervalMs = 16;
         private const int RestAfterMs = 2000;
 
         private readonly AdaptivePollRate _pollRate = new(PollIntervalMs, RestingPollIntervalMs, RestAfterMs);
@@ -646,7 +661,12 @@ namespace ControllerMagic
             _padPresent = gotPad;
             bool padInUse = gotPad && IdlePowerOff.IsActive(pad, new IdleThresholds(StickDeadZone, ScrollDeadZone));
 
-            if (gotPad)
+            // A game reads the virtual pad with its own timing, so it gets the buttons unfiltered.
+            var forwarded = pad;
+
+            // Input that resumes after a dropout must not replay held buttons as fresh presses.
+            bool reportsStopped = source == PadSource.Sdl && sdlPadReader.ReportsStopped;
+            if (gotPad && !reportsStopped)
             {
                 pad.Buttons = FilterButtons(pad.Buttons);
 
@@ -671,7 +691,7 @@ namespace ControllerMagic
             if ((gotPad || _taskbarFollower.IsArmed) && AppSettings.Instance.TaskbarAppsFollowCursor)
                 _taskbarFollower.Tick();
 
-            _passthrough.Tick(pad, gotPad, _connection.Identity, _connection.Serial);
+            _passthrough.Tick(forwarded, gotPad, _connection.Identity, _connection.Serial);
             return NextPollInterval(gotPad, padInUse);
         }
 
@@ -683,9 +703,9 @@ namespace ControllerMagic
                 return NoPadPollIntervalMs;
             }
 
-            // Held keyboard-mode state and a virtual pad a game is reading both need the fast rate.
-            bool active = padInUse || _keyboardMode || _passthrough.IsForwarding;
-            return _pollRate.Next(active, Environment.TickCount64);
+            // Keyboard mode and a virtual pad a game reads rest too: the first input after a rest
+            // waits at most one resting tick, then the rate is fast again.
+            return _pollRate.Next(padInUse, Environment.TickCount64);
         }
 
         // Only SDL pads can be switched off; an Xbox pad, or none, starts the wait over.
@@ -759,6 +779,8 @@ namespace ControllerMagic
             _prevButtons = PadButtons.None;
             _ltWasDown = true;
             _rtWasDown = true;
+            _volumeHeld = null;
+            _volumeRepeat.Reset();
             _moveHoldStartTick = 0;
             _dxRemainder = 0;
             _dyRemainder = 0;
@@ -879,6 +901,15 @@ namespace ControllerMagic
 
         private void ProcessTouchpad(PadState pad)
         {
+            bool otherInput = IdlePowerOff.IsActiveBesidesTouchpad(pad, new IdleThresholds(StickDeadZone, ScrollDeadZone));
+            if (!_touchpadGate.Allows(pad.TouchActive, otherInput))
+            {
+                // Forgotten, not ended: ending a blocked touch could read it as a tap.
+                _touchpadMouse.Reset();
+                _touchpadHoldsLeft = false;
+                return;
+            }
+
             var touch = _touchpadMouse.Update(
                 pad.TouchActive, pad.TouchX, pad.TouchY, (pad.Buttons & PadButtons.TouchpadClick) != 0, TouchpadSpeed);
             _touchpadHoldsLeft = touch.HoldLeft;
@@ -1020,11 +1051,21 @@ namespace ControllerMagic
             {
                 bool RT_down = IsTriggerDown(pad.RightTrigger, _rtWasDown);
                 _rtWasDown = RT_down;
+                bool LT_down = IsTriggerDown(pad.LeftTrigger, _ltWasDown);
+                _ltWasDown = LT_down;
 
-                // The combo picks the sound output, so its D-pad press doesn't also reach the app.
+                // Each combo's D-pad press is consumed, so it doesn't also reach the app as an arrow key.
                 if (SoundOutputCombo(RT_down, Up_pressed, Down_pressed) is { } direction)
                 {
                     CycleSoundOutput(direction);
+                    Up_pressed = false;
+                    Down_pressed = false;
+                }
+
+                StepVolume(VolumeCombo(
+                    LT_down && !RT_down, (buttons & PadButtons.DPadUp) != 0, (buttons & PadButtons.DPadDown) != 0));
+                if (LT_down)
+                {
                     Up_pressed = false;
                     Down_pressed = false;
                 }
@@ -1088,6 +1129,29 @@ namespace ControllerMagic
             : upPressed ? CycleDirection.Next
             : downPressed ? CycleDirection.Previous
             : null;
+
+        // LT held + D-pad Up/Down held; null when this frame isn't that combo. Up wins if both are held.
+        internal static VolumeStep? VolumeCombo(bool ltDown, bool upHeld, bool downHeld) =>
+            !ltDown ? null
+            : upHeld ? VolumeStep.Up
+            : downHeld ? VolumeStep.Down
+            : null;
+
+        private void StepVolume(VolumeStep? held)
+        {
+            if (held != _volumeHeld)
+            {
+                _volumeHeld = held;
+                _volumeRepeat.Reset();
+            }
+
+            if (held is not { } step || !_volumeRepeat.Fires(held: true))
+                return;
+
+            const ushort VK_VOLUME_DOWN = 0xAE;
+            const ushort VK_VOLUME_UP = 0xAF;
+            _input.SendKey(step == VolumeStep.Up ? VK_VOLUME_UP : VK_VOLUME_DOWN);
+        }
 
         // Off the poll thread: Windows can take a moment to switch, and the cursor mustn't stall meanwhile.
         private void CycleSoundOutput(CycleDirection direction) => _ = Task.Run(() =>

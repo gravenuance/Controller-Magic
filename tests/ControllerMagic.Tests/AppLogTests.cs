@@ -137,6 +137,91 @@ public class AppLogTests
     }
 
     [Fact]
+    public void Info_WhileAnotherHandleHasTheFileOpenForWriting_StillAppends()
+    {
+        string path = TempPath();
+        var log = new AppLog(path, new FakeTimeProvider(DateTimeOffset.UtcNow));
+
+        try
+        {
+            using (new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+            {
+                log.Info("shared write");
+                log.Flush();
+            }
+
+            Assert.Contains("shared write", File.ReadAllText(path), StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Info_WhileTheFileIsLocked_KeepsTheEntryForTheNextWrite()
+    {
+        string path = TempPath();
+        var log = new AppLog(path, new FakeTimeProvider(DateTimeOffset.UtcNow));
+
+        try
+        {
+            using (new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                log.Info("written while locked");
+                log.Flush();
+            }
+
+            log.Info("written after unlock");
+            log.Flush();
+
+            string text = File.ReadAllText(path);
+            Assert.Contains("written while locked", text, StringComparison.Ordinal);
+            Assert.Contains("written after unlock", text, StringComparison.Ordinal);
+            Assert.True(text.IndexOf("written while locked", StringComparison.Ordinal) < text.IndexOf("written after unlock", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Info_WhileTheFileStaysLocked_DropsTheOldestEntriesPastTheLimit()
+    {
+        string path = TempPath();
+        var log = new AppLog(path, new FakeTimeProvider(DateTimeOffset.UtcNow));
+        string filler = new('x', 1000);
+
+        try
+        {
+            using (new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                // 600 entries of about 1 KB each is well over the retention limit.
+                for (int i = 0; i < 600; i++)
+                {
+                    log.Info($"entry {i:000} {filler}");
+                    log.Flush();
+                }
+            }
+
+            log.Info("after unlock");
+            log.Flush();
+
+            string text = File.ReadAllText(path);
+            Assert.DoesNotContain("entry 000 ", text, StringComparison.Ordinal);
+            Assert.Contains("entry 599 ", text, StringComparison.Ordinal);
+            Assert.Contains("after unlock", text, StringComparison.Ordinal);
+            Assert.Contains("log entries were dropped", text, StringComparison.Ordinal);
+            Assert.True(text.Length < 256 * 1024 + 4096, $"kept {text.Length} characters");
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void RotateIfNeeded_FileUnderLimit_LeavesFileInPlace()
     {
         string path = TempPath();

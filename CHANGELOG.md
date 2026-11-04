@@ -8,6 +8,53 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-11-04
+
+### Added
+- Hold the left trigger and press D-pad Up or Down to turn the volume up or down. Keep the
+  D-pad held to keep changing it.
+
+### Changed
+- The touchpad is ignored while you use a stick, a button or a trigger, and for 0.3 seconds
+  after, so a thumb resting on it can't move the cursor or click. A touch that began during
+  that time is ignored until you lift your finger.
+- A controller you aren't touching is read about 60 times a second instead of 30, so a quick
+  tap after a pause is no longer missed. The on-screen keyboard and a game reading the virtual
+  controller now drop to that rate too while the controller is idle, instead of staying at 125.
+- The app no longer drains every controller input event from SDL, only connects and
+  disconnects; it reads the controller's state directly anyway.
+- Reopening Settings within a minute no longer re-checks the startup task and the drivers.
+- The resource-usage line is logged every 10 minutes only when the counts have moved.
+
+### Fixed
+- A controller that kept sending input without its motion data, as one can after a game has
+  used it, was treated as out of range and did nothing until it reconnected. It now works.
+- After a controller drops out of range, buttons held through the dropout no longer fire again
+  as new presses when it comes back.
+- With "Use HidHide" on, the app adds itself to HidHide's allowed apps before it first looks for
+  controllers, so a controller hidden by an earlier run is never invisible to it.
+- With "Use HidHide" off, starting or exiting the app no longer turns off HidHide hiding that
+  another tool switched on.
+- Games reading the virtual controller get button presses straight away instead of one poll
+  later, and a button held when control returns from a fullscreen game is no longer hidden from
+  them until released.
+- Closing Settings while HidHide and ViGEm were installing no longer loses "Use HidHide" or the
+  restart notice once the install you approved finishes.
+- Turning "Start with Windows" off when the startup task can't be removed (for example, the
+  elevation prompt was declined) now leaves the switch on instead of saving "off" while the app
+  keeps starting at logon.
+- A settings file that can't be read at logon no longer switches "Start with Windows" back on.
+- Exiting while a settings change was being saved no longer loses it.
+- Log entries are no longer lost while another program has the log file open.
+- If HidHide fails to hide or unhide the controller, the app no longer assumes it worked: it
+  retries (after 1 second, then backing off up to a minute), and it doesn't connect the virtual
+  controller while the real one is still visible, so games never see two.
+- Starting the app through a link or junction (such as `D:\Tools`) no longer re-points the
+  startup task at that path when it already starts the same exe, and Restart still works after
+  the path the app started from is removed.
+- The log now records the version and the path the app starts from, and when it adds itself to
+  HidHide's allowed apps.
+
 ## [1.13.0] - 2026-10-28
 
 ### Changed

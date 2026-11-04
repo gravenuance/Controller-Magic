@@ -104,7 +104,22 @@ internal sealed class SettingsStore : IDisposable
     // True when the file on disk must be left alone for this session, e.g. it's from a newer build.
     internal bool IsReadOnly { get; private set; }
 
+    // Raised inside Save just before the file is written; lets a test hold a save in flight.
+    internal Action? WriteStarting { get; set; }
+
     internal AppSettings Load()
+    {
+        var settings = LoadCore();
+
+        // Defaults standing in for a file that couldn't be used say nothing about whether startup was
+        // set up before, and first-run setup would register it against the user's saved choice.
+        if (IsReadOnly)
+            settings.HasInitializedStartup = true;
+
+        return settings;
+    }
+
+    private AppSettings LoadCore()
     {
         if (File.Exists(_path))
             return LoadFrom(_path, isLegacy: false);
@@ -319,6 +334,8 @@ internal sealed class SettingsStore : IDisposable
                 settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
                 string json = JsonSerializer.Serialize(settings, WriteOptions);
 
+                WriteStarting?.Invoke();
+
                 // Temp file plus same-volume move, so a crash mid-write never leaves a truncated file.
                 string tempPath = _path + ".tmp";
                 File.WriteAllText(tempPath, json);
@@ -340,31 +357,38 @@ internal sealed class SettingsStore : IDisposable
 
         lock (_pendingLock)
         {
-            if (_disposed)
+            if (!_disposed)
             {
-                _pendingSave = null;
-                Save(settings);
+                _pendingSave = settings;
+                _saveTimer ??= _clock.CreateTimer(_ => FlushPendingSave(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+                _saveTimer.Change(SaveDelay, Timeout.InfiniteTimeSpan);
                 return;
             }
 
-            _pendingSave = settings;
-            _saveTimer ??= _clock.CreateTimer(_ => FlushPendingSave(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-            _saveTimer.Change(SaveDelay, Timeout.InfiniteTimeSpan);
+            _pendingSave = null;
         }
+
+        // Outside _pendingLock: FlushPendingSave takes _saveLock first, so the reverse order could deadlock.
+        Save(settings);
     }
 
+    // Takes _saveLock before looking for a pending save, so a save the timer already took and is
+    // still writing finishes before this returns (Exit must not end the process mid-write).
     internal void FlushPendingSave()
     {
-        AppSettings? pending;
-        lock (_pendingLock)
+        lock (_saveLock)
         {
-            pending = _pendingSave;
-            _pendingSave = null;
-            _saveTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-        }
+            AppSettings? pending;
+            lock (_pendingLock)
+            {
+                pending = _pendingSave;
+                _pendingSave = null;
+                _saveTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            }
 
-        if (pending != null)
-            Save(pending);
+            if (pending != null)
+                Save(pending);
+        }
     }
 
     public void Dispose()

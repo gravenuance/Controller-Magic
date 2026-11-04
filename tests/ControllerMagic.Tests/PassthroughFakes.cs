@@ -6,7 +6,8 @@ namespace ControllerMagic.Tests;
 internal sealed class FakeHidHide : IHidHide
 {
     public bool IsInstalled => true;
-    public bool Cloaked { get; private set; }
+    // Settable: cloaking is system-wide, so another tool may have turned it on.
+    public bool Cloaked { get; set; }
     public int AllowListCalls { get; private set; }
     public List<string> BlockedPaths { get; } = [];
     public BlockResult NextBlockResult { get; set; } = BlockResult.AlreadyBlocked;
@@ -19,7 +20,23 @@ internal sealed class FakeHidHide : IHidHide
         return NextBlockResult;
     }
 
-    public void SetCloakingEnabled(bool enabled) => Cloaked = enabled;
+    // How many of the next cloak changes fail, leaving the cloak as it was.
+    public int FailCloakChanges { get; set; }
+
+    public int CloakChangeAttempts { get; private set; }
+
+    public bool SetCloakingEnabled(bool enabled)
+    {
+        CloakChangeAttempts++;
+        if (FailCloakChanges > 0)
+        {
+            FailCloakChanges--;
+            return false;
+        }
+
+        Cloaked = enabled;
+        return true;
+    }
 }
 
 internal sealed class FakeVirtualPad : IVirtualPad
@@ -50,16 +67,22 @@ internal sealed class FakeVirtualPad : IVirtualPad
 // Runs background work inline, or holds it back so a test can decide when it lands.
 internal sealed class FakeBackgroundRunner
 {
-    private readonly Queue<Action> _held = new();
+    private readonly Queue<(Action Action, TaskCompletionSource? Done)> _held = new();
 
     public bool Hold { get; set; }
+
+    // Held work reports itself unfinished until RunHeld, as real background work would.
+    public bool HeldWorkPending { get; set; }
+
+    public int HeldCount => _held.Count;
 
     public Task Run(Action action)
     {
         if (Hold)
         {
-            _held.Enqueue(action);
-            return Task.CompletedTask;
+            var done = HeldWorkPending ? new TaskCompletionSource() : null;
+            _held.Enqueue((action, done));
+            return done?.Task ?? Task.CompletedTask;
         }
 
         action();
@@ -68,8 +91,11 @@ internal sealed class FakeBackgroundRunner
 
     public void RunHeld()
     {
-        while (_held.TryDequeue(out var action))
-            action();
+        while (_held.TryDequeue(out var held))
+        {
+            held.Action();
+            held.Done?.SetResult();
+        }
     }
 }
 

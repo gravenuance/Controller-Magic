@@ -51,8 +51,12 @@ internal sealed class IdlePowerOff(TimeProvider clock, IControllerPowerOff power
     }
 
     internal static bool IsActive(PadState pad, IdleThresholds thresholds) =>
-        pad.Buttons != PadButtons.None
-        || pad.TouchActive
+        pad.TouchActive
+        || (pad.Buttons & PadButtons.TouchpadClick) != 0
+        || IsActiveBesidesTouchpad(pad, thresholds);
+
+    internal static bool IsActiveBesidesTouchpad(PadState pad, IdleThresholds thresholds) =>
+        (pad.Buttons & ~PadButtons.TouchpadClick) != PadButtons.None
         || pad.LeftTrigger > TriggerThreshold
         || pad.RightTrigger > TriggerThreshold
         || !ControllerPoller.IsInsideDeadZone(ControllerPoller.StickMagnitude(pad.LeftThumbX, pad.LeftThumbY), thresholds.StickDeadZone)

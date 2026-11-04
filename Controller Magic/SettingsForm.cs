@@ -100,9 +100,24 @@ namespace ControllerMagic
         private const string WarningGlyph = "\uE7BA";
         private const string ReconnectHint = "Turn your controller off and on to finish hiding it.";
 
+        // The system changes the window asks for, replaceable so tests never reach UAC, schtasks or the drivers.
+        internal Func<bool, Task<bool>> SetStartupEnabled { get; set; }
+        internal Func<CancellationToken, Task<DriverStatus>> DetectDriverStatus { get; set; }
+        internal Func<DriverStatus, IProgress<string>?, CancellationToken, Task<InstallResult>> InstallDrivers { get; set; }
+        internal Func<Task> RefreshDriverStatus { get; set; }
+
+        // Each re-show within this skips spawning schtasks and probing the drivers again.
+        private static readonly TimeSpan SystemCheckFreshFor = TimeSpan.FromMinutes(1);
+        private readonly RecentCheck _startupCheck = new(TimeProvider.System, SystemCheckFreshFor);
+        private readonly RecentCheck _driversCheck = new(TimeProvider.System, SystemCheckFreshFor);
+
         internal SettingsForm(ControllerPoller poller)
         {
             _poller = poller;
+            SetStartupEnabled = enabled => StartupHelper.SetEnabledAsync(enabled);
+            DetectDriverStatus = _poller.DetectDriverStatusAsync;
+            InstallDrivers = DriverInstaller.InstallAsync;
+            RefreshDriverStatus = _poller.RefreshDriverStatusAsync;
 
             InitializeComponent();
             Icon = Theme.AppIcon;
@@ -631,9 +646,11 @@ namespace ControllerMagic
                     return;
                 userChanged = false;
                 toggle.Checked = AppSettings.Instance.RunAtStartup;
+                if (_startupCheck.IsFresh)
+                    return;
                 _ = _operations.RunAsync(
                     "checking Start with Windows",
-                    ct => ReconcileStartupToggleAsync(toggle, () => userChanged, ct),
+                    ct => ReconcileStartupToggleAsync(toggle, () => userChanged, _startupCheck, ct),
                     _ => { });
             });
         }
@@ -674,16 +691,24 @@ namespace ControllerMagic
         }
 
         // Busy until schtasks finishes, so rapid clicks can't run overlapping changes. Not cancelled
-        // on close: the user's choice still gets applied and saved.
-        private static async Task ApplyStartupChoiceAsync(ToggleSwitch toggle)
+        // on close: the user's choice still gets applied and saved. A change that didn't take (e.g. the
+        // elevation prompt was declined) is not saved and the switch goes back to the saved value.
+        internal async Task ApplyStartupChoiceAsync(ToggleSwitch toggle)
         {
             bool wanted = toggle.Checked;
             toggle.Busy = true;
+            _startupCheck.Invalidate();
             try
             {
-                await StartupHelper.SetEnabledAsync(wanted).ConfigureAwait(true);
-                AppSettings.Instance.RunAtStartup = wanted;
-                RequestSave();
+                if (await SetStartupEnabled(wanted).ConfigureAwait(true))
+                {
+                    AppSettings.Instance.RunAtStartup = wanted;
+                    RequestSave();
+                }
+                else if (!toggle.IsDisposed)
+                {
+                    toggle.Checked = AppSettings.Instance.RunAtStartup;
+                }
             }
             finally
             {
@@ -693,7 +718,8 @@ namespace ControllerMagic
         }
 
         // Display only: a query that fails transiently must never switch startup off or save anything.
-        private static async Task ReconcileStartupToggleAsync(ToggleSwitch toggle, Func<bool> userChanged, CancellationToken ct)
+        private static async Task ReconcileStartupToggleAsync(
+            ToggleSwitch toggle, Func<bool> userChanged, RecentCheck check, CancellationToken ct)
         {
             bool actuallyEnabled = await StartupHelper.IsEnabledAsync(ct).ConfigureAwait(true);
 
@@ -701,6 +727,7 @@ namespace ControllerMagic
                 return;
 
             toggle.Checked = actuallyEnabled;
+            check.MarkCompleted();
         }
 
         private const string HidHideNeedsDriversText = "Needs drivers - connect to the internet to install.";
@@ -788,7 +815,8 @@ namespace ControllerMagic
                 if (toggle.Busy)
                     return;
                 toggle.Checked = AppSettings.Instance.UseHidHide;
-                _ = _operations.RunAsync("checking HidHide drivers", ct => ReconcileHidHideToggleAsync(toggle, ShowStatus, ct), ShowStatus);
+                if (!_driversCheck.IsFresh)
+                    _ = _operations.RunAsync("checking HidHide drivers", ct => ReconcileHidHideToggleAsync(toggle, ShowStatus, ct), ShowStatus);
             });
         }
 
@@ -807,8 +835,9 @@ namespace ControllerMagic
             }
         }
 
-        private async Task ApplyHidHideChoiceAsync(ToggleSwitch toggle, Action<string> showStatus, CancellationToken ct)
+        internal async Task ApplyHidHideChoiceAsync(ToggleSwitch toggle, Action<string> showStatus, CancellationToken ct)
         {
+            _driversCheck.Invalidate();
             if (!toggle.Checked)
             {
                 SaveUseHidHide(false);
@@ -816,7 +845,7 @@ namespace ControllerMagic
                 return;
             }
 
-            var driverStatus = await _poller.DetectDriverStatusAsync(ct).ConfigureAwait(true);
+            var driverStatus = await DetectDriverStatus(ct).ConfigureAwait(true);
             ct.ThrowIfCancellationRequested();
             if (driverStatus.HidHideInstalled && driverStatus.VigemInstalled)
             {
@@ -831,14 +860,17 @@ namespace ControllerMagic
                 if (!ct.IsCancellationRequested)
                     showStatus(text);
             });
-            var result = await DriverInstaller.InstallAsync(driverStatus, progress, ct).ConfigureAwait(true);
+
+            // Not the window's token: hiding the window must not abandon an install the user already
+            // approved in UAC, or the save below would never run. ct only guards the UI updates.
+            var result = await InstallDrivers(driverStatus, progress, CancellationToken.None).ConfigureAwait(true);
 
             // Saved even if the window has closed meanwhile: the drivers are in. After RebootRequired
             // GamepadPassthroughController still waits until the driver actually works.
             bool installed = result.Outcome is InstallOutcome.Success or InstallOutcome.RebootRequired;
             if (installed)
             {
-                await _poller.RefreshDriverStatusAsync().ConfigureAwait(true);
+                await RefreshDriverStatus().ConfigureAwait(true);
                 SaveUseHidHide(true);
             }
 
@@ -868,13 +900,14 @@ namespace ControllerMagic
 
         private async Task ReconcileHidHideToggleAsync(ToggleSwitch toggle, Action<string> showStatus, CancellationToken ct)
         {
-            var driverStatus = await _poller.DetectDriverStatusAsync(ct).ConfigureAwait(true);
+            var driverStatus = await DetectDriverStatus(ct).ConfigureAwait(true);
             if (ct.IsCancellationRequested || toggle.IsDisposed)
                 return;
 
             bool enabled = DriverDependency.ShouldToggleBeEnabled(driverStatus);
             toggle.Enabled = enabled;
             showStatus(enabled ? string.Empty : HidHideNeedsDriversText);
+            _driversCheck.MarkCompleted();
         }
 
         private void AddChipField(string label, Func<List<string>> getItems, Action<List<string>> onChanged)

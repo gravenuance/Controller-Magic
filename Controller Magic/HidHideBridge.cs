@@ -20,7 +20,8 @@ internal interface IHidHide
     bool IsInstalled { get; }
     void EnsureAppAllowListed();
     BlockResult BlockDevice(string deviceInterfacePath);
-    void SetCloakingEnabled(bool enabled);
+    // False when HidHide didn't take the change.
+    bool SetCloakingEnabled(bool enabled);
 }
 
 internal sealed class HidHideBridge : IHidHide
@@ -48,8 +49,11 @@ internal sealed class HidHideBridge : IHidHide
         try
         {
             string exePath = System.Windows.Forms.Application.ExecutablePath;
-            if (!_service.ApplicationPaths.Contains(exePath, StringComparer.OrdinalIgnoreCase))
-                _service.AddApplicationPath(exePath, throwIfInvalid: false);
+            if (_service.ApplicationPaths.Contains(exePath, StringComparer.OrdinalIgnoreCase))
+                return;
+
+            _service.AddApplicationPath(exePath, throwIfInvalid: false);
+            AppLog.Default.Info($"HidHideBridge: allow-listed {exePath}");
         }
         catch (Exception ex)
         {
@@ -115,22 +119,30 @@ internal sealed class HidHideBridge : IHidHide
 
     // The one flag that matters for both clean-exit and crash recovery: turning this off restores
     // normal access to every cloaked device immediately, regardless of what's in the block list.
-    public void SetCloakingEnabled(bool enabled)
+    // Logged once per run of failures: the caller retries a failed change.
+    private volatile bool _cloakFailing;
+
+    public bool SetCloakingEnabled(bool enabled)
     {
         try
         {
             _service.IsActive = enabled;
+            if (_cloakFailing)
+                AppLog.Default.Info($"HidHideBridge: cloaking {(enabled ? "on" : "off")} after earlier failures");
+            _cloakFailing = false;
+            return true;
         }
         catch (HidHideDriverNotFoundException)
         {
-            // Expected, not warning-worthy: GamepadPassthroughController.ForceOffAtStartup calls
-            // this unconditionally on every launch, for every user, regardless of whether HidHide
-            // is even installed - which it isn't for the overwhelming majority who've never
-            // turned "Use HidHide" on. There's nothing to toggle, so nothing went wrong.
+            // Without the driver nothing is hidden, so turning cloaking off has nothing to do.
+            return !enabled;
         }
         catch (Exception ex)
         {
-            AppLog.Default.Warning("HidHideBridge: failed to toggle cloaking", ex);
+            if (!_cloakFailing)
+                AppLog.Default.Warning($"HidHideBridge: failed to turn cloaking {(enabled ? "on" : "off")}; retrying", ex);
+            _cloakFailing = true;
+            return false;
         }
     }
 }

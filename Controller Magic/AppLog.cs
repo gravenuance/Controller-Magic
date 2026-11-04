@@ -92,10 +92,16 @@ internal sealed class AppLog
         _queue.Writer.TryWrite(item);
     }
 
+    // Entries a failed write leaves behind are retried with the next one; past this many characters
+    // the oldest are dropped, so a file that stays locked can't grow memory without limit.
+    internal const int MaxPendingChars = 256 * 1024;
+
     private async Task WriteLoopAsync()
     {
         var reader = _queue.Reader;
-        var batch = new StringBuilder();
+        var pending = new Queue<string>();
+        int pendingChars = 0;
+        int dropped = 0;
         var flushes = new List<TaskCompletionSource>();
 
         while (await reader.WaitToReadAsync().ConfigureAwait(false))
@@ -103,13 +109,31 @@ internal sealed class AppLog
             while (reader.TryRead(out var item))
             {
                 if (item.Text is { } text)
-                    batch.Append(text);
+                {
+                    pending.Enqueue(text);
+                    pendingChars += text.Length;
+                }
                 if (item.Flushed is { } flushed)
                     flushes.Add(flushed);
             }
 
-            WriteToDisk(batch.ToString());
-            batch.Clear();
+            string notice = dropped > 0
+                ? FormatEntry(LogLevel.Warning, $"{dropped} log entries were dropped while the log file couldn't be written", null) + Environment.NewLine + Environment.NewLine
+                : string.Empty;
+            if (pending.Count == 0 || WriteToDisk(notice + string.Concat(pending)))
+            {
+                pending.Clear();
+                pendingChars = 0;
+                dropped = 0;
+            }
+            else
+            {
+                while (pendingChars > MaxPendingChars && pending.Count > 1)
+                {
+                    pendingChars -= pending.Dequeue().Length;
+                    dropped++;
+                }
+            }
 
             foreach (var flushed in flushes)
                 flushed.TrySetResult();
@@ -117,11 +141,9 @@ internal sealed class AppLog
         }
     }
 
-    private void WriteToDisk(string text)
+    // False when the write failed, so the caller keeps the text for the next pass.
+    private bool WriteToDisk(string text)
     {
-        if (text.Length == 0)
-            return;
-
         try
         {
             if (!_directoryReady)
@@ -133,13 +155,18 @@ internal sealed class AppLog
             }
 
             RotateIfNeeded();
-            File.AppendAllText(_path, text);
+
+            // ReadWrite sharing: a viewer or second instance holding the file open for writing must not block the append.
+            using var stream = new FileStream(_path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+            stream.Write(Encoding.UTF8.GetBytes(text));
+            return true;
         }
         catch
         {
             // Logging itself failing must never crash or cascade - there's nothing more to
             // safely do at this point. The directory is checked again next time.
             _directoryReady = false;
+            return false;
         }
     }
 

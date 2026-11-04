@@ -34,6 +34,53 @@ public class GamepadPassthroughControllerTests
         Assert.True(harness.VirtualPad.IsConnected);
     }
 
+    // Regression: a failed cloak was recorded as done, leaving games two controllers and no retry.
+    [Fact]
+    public void Tick_CloakFails_NoVirtualPadIsLeftBesideTheVisibleRealOneAndItRetriesAfterADelay()
+    {
+        var harness = new PassthroughHarness { SettingOn = false };
+        harness.TickWithoutPad();
+        harness.SettingOn = true;
+        harness.HidHide.FailCloakChanges = 1;
+
+        harness.TickWithPad();
+        bool virtualPadAfterFailure = harness.VirtualPad.IsConnected;
+        int attempts = harness.HidHide.CloakChangeAttempts;
+        harness.TickWithPad();
+        int attemptsBeforeDelay = harness.HidHide.CloakChangeAttempts;
+        harness.Clock.Advance(GamepadPassthroughController.CloakRetryDelay);
+        harness.TickWithPad();
+
+        Assert.False(virtualPadAfterFailure);
+        Assert.Equal(attempts, attemptsBeforeDelay);
+        Assert.True(harness.HidHide.Cloaked);
+        Assert.True(harness.VirtualPad.IsConnected);
+    }
+
+    // Regression: a failed uncloak for a fullscreen game was recorded as done, so the game never got the pad.
+    [Fact]
+    public void Tick_UncloakForFullscreenFails_RetriesUntilThePadIsVisible()
+    {
+        var harness = new PassthroughHarness();
+        harness.TickWithPad();
+        harness.Controller.SetFullscreenSuspended(true);
+        harness.HidHide.FailCloakChanges = 2;
+
+        harness.TickWithoutPad();
+        harness.Clock.Advance(GamepadPassthroughController.CloakRetryDelay);
+        harness.TickWithoutPad();
+        bool hiddenAfterTwoFailures = harness.HidHide.Cloaked;
+        harness.Clock.Advance(GamepadPassthroughController.CloakRetryDelay);
+        harness.TickWithoutPad();
+        bool hiddenBeforeBackoffEnds = harness.HidHide.Cloaked;
+        harness.Clock.Advance(GamepadPassthroughController.CloakRetryDelay);
+        harness.TickWithoutPad();
+
+        Assert.True(hiddenAfterTwoFailures);
+        Assert.True(hiddenBeforeBackoffEnds);
+        Assert.False(harness.HidHide.Cloaked);
+    }
+
     [Fact]
     public void ReconnectNeeded_PadConnectedBeforeHiding_IsSet()
     {
@@ -197,6 +244,66 @@ public class GamepadPassthroughControllerTests
         harness.Runner.RunHeld();
 
         Assert.False(harness.HidHide.Cloaked);
+    }
+
+    // Regression: every launch and exit turned off HidHide cloaking another tool had turned on.
+    [Fact]
+    public void FirstTickAndShutdown_SettingOff_LeaveAnotherToolsCloakingOn()
+    {
+        var harness = new PassthroughHarness { SettingOn = false };
+        harness.HidHide.Cloaked = true;
+
+        harness.TickWithoutPad();
+        bool afterStart = harness.HidHide.Cloaked;
+        harness.Controller.Shutdown();
+
+        Assert.True(afterStart);
+        Assert.True(harness.HidHide.Cloaked);
+    }
+
+    [Fact]
+    public void FirstTick_SettingOn_ClearsCloakingAPreviousRunLeftOn()
+    {
+        var harness = new PassthroughHarness();
+        harness.HidHide.Cloaked = true;
+        harness.Runner.Hold = true;
+
+        harness.TickWithoutPad();
+        harness.Runner.RunHeld();
+
+        Assert.False(harness.HidHide.Cloaked);
+    }
+
+    // Regression: the startup uncloak ran alongside the first cloak and could land after it.
+    [Fact]
+    public void FirstTick_StartupUncloakStillRunning_NoCloakStartsUntilItFinishes()
+    {
+        var harness = new PassthroughHarness();
+        harness.Controller.RefreshDriverStatus();
+        harness.Runner.Hold = true;
+        harness.Runner.HeldWorkPending = true;
+
+        harness.TickWithoutPad();
+        harness.TickWithoutPad();
+        int heldBeforeReset = harness.Runner.HeldCount;
+        harness.Runner.RunHeld();
+        harness.TickWithoutPad();
+        harness.Runner.RunHeld();
+
+        Assert.Equal(1, heldBeforeReset);
+        Assert.True(harness.HidHide.Cloaked);
+    }
+
+    [Theory]
+    [InlineData(true, 1)]
+    [InlineData(false, 0)]
+    public void AllowListBeforeDeviceScan_OnlyWithTheSettingOn_ListsTheApp(bool settingOn, int expectedCalls)
+    {
+        var harness = new PassthroughHarness { SettingOn = settingOn };
+
+        harness.Controller.AllowListBeforeDeviceScan();
+
+        Assert.Equal(expectedCalls, harness.HidHide.AllowListCalls);
     }
 
     [Fact]

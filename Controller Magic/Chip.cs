@@ -96,17 +96,29 @@ namespace ControllerMagic
             g.DrawLine(xPen, cx - 3, cy + 3, cx + 3, cy - 3);
         }
 
+        // Repainted only when the pointer crosses into or out of the close button, not on every move.
+        private bool _closeHot;
+
         protected override void OnMouseMove(MouseEventArgs e)
         {
-            Invalidate();
-            Cursor = CloseHit.Contains(e.Location) ? Cursors.Hand : Cursors.Default;
+            SetCloseHot(CloseHit.Contains(e.Location));
             base.OnMouseMove(e);
         }
 
         protected override void OnMouseLeave(EventArgs e)
         {
-            Invalidate();
+            SetCloseHot(false);
             base.OnMouseLeave(e);
+        }
+
+        private void SetCloseHot(bool hot)
+        {
+            if (hot == _closeHot)
+                return;
+
+            _closeHot = hot;
+            Cursor = hot ? Cursors.Hand : Cursors.Default;
+            Invalidate();
         }
 
         protected override void OnMouseClick(MouseEventArgs e)

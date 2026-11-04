@@ -17,10 +17,15 @@ internal sealed class ReportWatchdog
         _staleAfter = staleAfter;
     }
 
+    // Set once input changed under a frozen stamp: the pad sends reports without it (a game can
+    // switch a DualSense to simple reports), so judging by it would hold a live pad neutral.
+    public bool IgnoresStamps { get; private set; }
+
     // A null stamp means the pad has no per-report counter, so it can never be judged stale.
-    public bool IsStale(ulong? stamp)
+    // inputChanged: the pad's state differs from the last read, which only a new report can do.
+    public bool IsStale(ulong? stamp, bool inputChanged = false)
     {
-        if (stamp is not { } current)
+        if (IgnoresStamps || stamp is not { } current)
             return false;
 
         if (current != _lastStamp)
@@ -30,8 +35,16 @@ internal sealed class ReportWatchdog
             return false;
         }
 
-        return _clock.GetElapsedTime(_stampChangedAt) >= _staleAfter;
+        if (_clock.GetElapsedTime(_stampChangedAt) < _staleAfter)
+            return false;
+
+        IgnoresStamps = inputChanged;
+        return !inputChanged;
     }
 
-    public void Reset() => _lastStamp = null;
+    public void Reset()
+    {
+        _lastStamp = null;
+        IgnoresStamps = false;
+    }
 }

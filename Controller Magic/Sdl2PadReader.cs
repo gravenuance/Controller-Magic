@@ -102,9 +102,28 @@ internal sealed class Sdl2PadReader : IDisposable
             return;
         }
 
-        // The accelerometer runs only as a per-report liveness stamp; its events would just flood the queue.
-        _ = SDL.SDL_EventState(SDL.SDL_EventType.SDL_CONTROLLERSENSORUPDATE, SDL.SDL_IGNORE);
+        foreach (var type in IgnoredEvents)
+            _ = SDL.SDL_EventState(type, SDL.SDL_IGNORE);
     }
+
+    // State is read directly, so per-report input events would only cost a native call each to drain
+    // (the accelerometer runs just as a liveness stamp). Device added/removed stay enabled: they drive
+    // opening and closing, and while JOYDEVICEADDED is on SDL keeps updating joysticks as it pumps.
+    private static readonly SDL.SDL_EventType[] IgnoredEvents =
+    [
+        SDL.SDL_EventType.SDL_JOYAXISMOTION,
+        SDL.SDL_EventType.SDL_JOYBALLMOTION,
+        SDL.SDL_EventType.SDL_JOYHATMOTION,
+        SDL.SDL_EventType.SDL_JOYBUTTONDOWN,
+        SDL.SDL_EventType.SDL_JOYBUTTONUP,
+        SDL.SDL_EventType.SDL_CONTROLLERAXISMOTION,
+        SDL.SDL_EventType.SDL_CONTROLLERBUTTONDOWN,
+        SDL.SDL_EventType.SDL_CONTROLLERBUTTONUP,
+        SDL.SDL_EventType.SDL_CONTROLLERTOUCHPADDOWN,
+        SDL.SDL_EventType.SDL_CONTROLLERTOUCHPADMOTION,
+        SDL.SDL_EventType.SDL_CONTROLLERTOUCHPADUP,
+        SDL.SDL_EventType.SDL_CONTROLLERSENSORUPDATE,
+    ];
 
     public bool TryGetLatest(out PadState state)
     {
@@ -118,11 +137,31 @@ internal sealed class Sdl2PadReader : IDisposable
             return false;
         }
 
-        state = TrackReportsStopped(_watchdog.IsStale(ReadReportStamp()))
-            ? new PadState { IsConnected = true }
-            : Read(_controller);
+        var read = Read(_controller);
+        bool stale = _watchdog.IsStale(ReadReportStamp(), inputChanged: !HasSameInput(read, _lastRead));
+        _lastRead = read;
+        if (_watchdog.IgnoresStamps && _hasReportStamp)
+        {
+            _hasReportStamp = false;
+            AppLog.Default.Warning("Sdl2PadReader: input is arriving without report stamps; range guard off for this connection");
+        }
+
+        state = TrackReportsStopped(stale) ? new PadState { IsConnected = true } : read;
         return true;
     }
+
+    // SDL holds a pad's last state between reports, so input that changes proves reports are arriving.
+    private PadState _lastRead;
+
+    internal static bool HasSameInput(PadState a, PadState b) =>
+        a.Buttons == b.Buttons
+        && a.LeftThumbX == b.LeftThumbX && a.LeftThumbY == b.LeftThumbY
+        && a.RightThumbX == b.RightThumbX && a.RightThumbY == b.RightThumbY
+        && a.LeftTrigger == b.LeftTrigger && a.RightTrigger == b.RightTrigger
+        && a.TouchActive == b.TouchActive && a.TouchX == b.TouchX && a.TouchY == b.TouchY;
+
+    // While true, TryGetLatest hands out a neutral pad that stands in for missing reports.
+    public bool ReportsStopped => _reportsStopped;
 
     private unsafe ulong? ReadReportStamp()
     {
@@ -331,6 +370,7 @@ internal sealed class Sdl2PadReader : IDisposable
             AppLog.Default.Info($"Sdl2PadReader: {_dropoutCount} report dropout(s) during this connection");
 
         _hasReportStamp = false;
+        _lastRead = default;
         _watchdog.Reset();
         _reportsStopped = false;
         _dropoutCount = 0;

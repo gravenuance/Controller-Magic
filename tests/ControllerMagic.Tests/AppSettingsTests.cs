@@ -238,6 +238,45 @@ public sealed class AppSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Load_FileLockedAgainstReading_IsReadOnlyAndTreatsStartupAsAlreadyInitialized()
+    {
+        WriteSettings($$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion}}, "HasInitializedStartup": true, "RunAtStartup": false}""");
+        var store = CreateStore();
+
+        AppSettings settings;
+        using (new FileStream(SettingsPath, FileMode.Open, FileAccess.Read, FileShare.None))
+            settings = store.Load();
+
+        Assert.True(store.IsReadOnly);
+        Assert.True(settings.HasInitializedStartup);
+        Assert.False(settings.RunAtStartup);
+    }
+
+    [Fact]
+    public void Load_UnreadableFileWhoseBackupFails_TreatsStartupAsAlreadyInitialized()
+    {
+        WriteSettings("not json at all");
+        Directory.CreateDirectory(BadBackupPath);
+        var store = CreateStore();
+
+        var settings = store.Load();
+
+        Assert.True(store.IsReadOnly);
+        Assert.True(settings.HasInitializedStartup);
+    }
+
+    [Fact]
+    public void Load_NoFile_LeavesStartupToBeInitialized()
+    {
+        var store = CreateStore();
+
+        var settings = store.Load();
+
+        Assert.False(store.IsReadOnly);
+        Assert.False(settings.HasInitializedStartup);
+    }
+
+    [Fact]
     public void Load_NewerSchema_TreatsStartupAsAlreadyInitialized()
     {
         WriteSettings($$"""{"SchemaVersion": {{AppSettings.CurrentSchemaVersion + 1}}}""");
@@ -435,6 +474,48 @@ public sealed class AppSettingsTests : IDisposable
         settings.FlushPendingSave();
 
         Assert.Equal(3333, ReadJson(SettingsPath).GetProperty("StickDeadZone").GetInt32());
+    }
+
+    [Fact]
+    public async Task FlushPendingSave_WhileTheTimerSaveIsInFlight_WaitsForItToFinish()
+    {
+        var store = CreateStore();
+        var settings = store.Load();
+        var ct = TestContext.Current.CancellationToken;
+        var writeEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseWrite = new ManualResetEventSlim();
+        store.WriteStarting = () =>
+        {
+            writeEntered.TrySetResult();
+            releaseWrite.Wait(TimeSpan.FromSeconds(10), ct);
+        };
+        settings.StickDeadZone = 5555;
+        settings.RequestSave();
+
+        // The timer callback takes the pending save and blocks inside the write.
+        var timerSave = Task.Run(() => _clock.Advance(SettingsStore.SaveDelay), ct);
+        await writeEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct).ConfigureAwait(true);
+        var flush = Task.Run(settings.FlushPendingSave, ct);
+        bool returnedBeforeWriteFinished = await Task.WhenAny(flush, Task.Delay(250, ct)).ConfigureAwait(true) == flush;
+        releaseWrite.Set();
+        await timerSave.ConfigureAwait(true);
+        await flush.ConfigureAwait(true);
+
+        Assert.False(returnedBeforeWriteFinished);
+        Assert.Equal(5555, ReadJson(SettingsPath).GetProperty("StickDeadZone").GetInt32());
+    }
+
+    [Fact]
+    public void RequestSave_AfterDispose_SavesImmediately()
+    {
+        var store = CreateStore();
+        var settings = store.Load();
+        store.Dispose();
+        settings.StickDeadZone = 6666;
+
+        settings.RequestSave();
+
+        Assert.Equal(6666, ReadJson(SettingsPath).GetProperty("StickDeadZone").GetInt32());
     }
 
     [Fact]

@@ -120,6 +120,42 @@ public sealed class IdlePowerOffTests
         Assert.True(IdlePowerOff.IsActive(pad, Thresholds));
     }
 
+    [Fact]
+    public void IsActive_PressingTheTouchpadDown_Counts() =>
+        Assert.True(IdlePowerOff.IsActive(Resting with { Buttons = PadButtons.TouchpadClick }, Thresholds));
+
+    [Theory]
+    [InlineData("touch")]
+    [InlineData("touchpad press")]
+    public void IsActiveBesidesTouchpad_TouchpadUseAlone_DoesNotCount(string what)
+    {
+        var pad = what == "touch"
+            ? Resting with { TouchActive = true }
+            : Resting with { TouchActive = true, Buttons = PadButtons.TouchpadClick };
+
+        Assert.False(IdlePowerOff.IsActiveBesidesTouchpad(pad, Thresholds));
+    }
+
+    [Theory]
+    [InlineData("button")]
+    [InlineData("left trigger")]
+    [InlineData("left stick")]
+    [InlineData("right stick")]
+    public void IsActiveBesidesTouchpad_OtherInputWhileTouching_Counts(string what)
+    {
+        var touching = Resting with { TouchActive = true, Buttons = PadButtons.TouchpadClick };
+        var pad = what switch
+        {
+            "button" => touching with { Buttons = PadButtons.TouchpadClick | PadButtons.A },
+            "left trigger" => touching with { LeftTrigger = 31 },
+            "left stick" => touching with { LeftThumbY = 4000 },
+            "right stick" => touching with { RightThumbX = -4000 },
+            _ => throw new ArgumentOutOfRangeException(nameof(what)),
+        };
+
+        Assert.True(IdlePowerOff.IsActiveBesidesTouchpad(pad, Thresholds));
+    }
+
     // Drift inside the deadzones, or a resting trigger, must not keep the pad on forever.
     [Fact]
     public void IsActive_DriftInsideTheDeadZones_DoesNotCount() =>

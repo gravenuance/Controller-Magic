@@ -28,8 +28,31 @@ internal sealed class ResourceUsageMonitor : IDisposable
 
     public ResourceUsageMonitor(TimeSpan interval)
     {
-        _timer = new System.Threading.Timer(_ => LogSnapshot("periodic"), null, interval, interval);
+        _timer = new System.Threading.Timer(_ => LogPeriodicIfMoved(), null, interval, interval);
     }
+
+    // A periodic line is only worth writing when a count has moved this far since the last one: a
+    // leak still shows as a steady run of lines, and a steady process stays out of the log.
+    internal const uint PeriodicLogStep = 25;
+
+    // Only the timer touches these, and its callbacks don't overlap at a 10-minute interval.
+    private uint? _loggedGdi;
+    private uint? _loggedUser;
+
+    private void LogPeriodicIfMoved()
+    {
+        uint gdiObjects = GetGuiResources(CurrentProcess, GrGdiObjects);
+        uint userObjects = GetGuiResources(CurrentProcess, GrUserObjects);
+        if (!HasMoved(_loggedGdi, gdiObjects) && !HasMoved(_loggedUser, userObjects))
+            return;
+
+        _loggedGdi = gdiObjects;
+        _loggedUser = userObjects;
+        AppLog.Default.Info($"ResourceUsageMonitor (periodic): GDI objects={gdiObjects}, USER objects={userObjects}");
+    }
+
+    internal static bool HasMoved(uint? logged, uint current) =>
+        logged is not { } last || (current > last ? current - last : last - current) >= PeriodicLogStep;
 
     // For GamepadPassthroughController's safety cutoff: a synchronous read of the live count,
     // separate from the logged snapshot below, so a caller can act on the value directly.

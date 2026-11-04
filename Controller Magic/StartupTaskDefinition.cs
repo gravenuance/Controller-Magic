@@ -83,11 +83,19 @@ internal static class StartupTaskDefinition
         return hasLogonTrigger ? StartupTaskAction.None : StartupTaskAction.Reregister;
     }
 
+    // Also true for two routes to one file (a junction and its target), so launching through a
+    // link never re-points the task at a path that may later disappear.
     public static bool IsSameExecutable(string a, string b)
     {
         string? left = Normalize(a);
         string? right = Normalize(b);
-        return left != null && string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+        if (left == null || right == null)
+            return false;
+        if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        string? leftFinal = FinalPath.TryResolve(left);
+        return leftFinal != null && string.Equals(leftFinal, FinalPath.TryResolve(right), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? Normalize(string path)

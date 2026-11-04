@@ -32,34 +32,40 @@ namespace ControllerMagic
         public static async Task<bool> IsEnabledAsync(CancellationToken ct = default) =>
             (await RunSchtasksAsync(ct, "/Query", "/TN", TaskName).ConfigureAwait(false)).ExitCode == 0 || GetRunKeyValue() != null;
 
-        public static Task SetEnabledAsync(bool enabled, CancellationToken ct = default) =>
+        // False when the change didn't take (e.g. the elevation prompt was declined), so the caller
+        // must not record the new state.
+        public static Task<bool> SetEnabledAsync(bool enabled, CancellationToken ct = default) =>
             enabled ? EnableAsync(ct) : DisableAsync(ct);
 
-        private static async Task EnableAsync(CancellationToken ct)
+        private static async Task<bool> EnableAsync(CancellationToken ct)
         {
             string exe = Application.ExecutablePath;
 
             if (await TryCreateTaskAsync(exe, ct).ConfigureAwait(false))
             {
                 RemoveRunKeyValue();
-                return;
+                return true;
             }
 
             AppLog.Default.Warning("StartupHelper: using the Run key for \"Start with Windows\" instead.");
-            SetRunKeyValue(exe);
+            return SetRunKeyValue(exe);
         }
 
         // A task an older version registered elevated can only be deleted elevated; the delete's
         // arguments are fixed, so the elevated schtasks reads nothing a user could have altered.
-        private static async Task DisableAsync(CancellationToken ct)
+        private static async Task<bool> DisableAsync(CancellationToken ct)
         {
+            bool taskGone = true;
             if ((await RunSchtasksAsync(ct, "/Query", "/TN", TaskName).ConfigureAwait(false)).ExitCode == 0)
             {
-                if ((await RunSchtasksAsync(ct, "/Delete", "/TN", TaskName, "/F").ConfigureAwait(false)).ExitCode != 0)
-                    await RunSchtasksElevatedAsync(new[] { "/Delete", "/TN", TaskName, "/F" }, ct).ConfigureAwait(false);
+                taskGone = (await RunSchtasksAsync(ct, "/Delete", "/TN", TaskName, "/F").ConfigureAwait(false)).ExitCode == 0
+                    || await RunSchtasksElevatedAsync(new[] { "/Delete", "/TN", TaskName, "/F" }, ct).ConfigureAwait(false);
+                if (!taskGone)
+                    AppLog.Default.Warning("StartupHelper: couldn't delete the startup task; \"Start with Windows\" stays on.");
             }
 
-            RemoveRunKeyValue();
+            bool runKeyGone = RemoveRunKeyValue();
+            return taskGone && runKeyGone;
         }
 
         // Runs silently at every launch, so it never prompts for elevation. Moves users of the old
@@ -186,30 +192,34 @@ namespace ControllerMagic
             }
         }
 
-        private static void SetRunKeyValue(string exe)
+        private static bool SetRunKeyValue(string exe)
         {
             try
             {
                 using var key = Registry.CurrentUser.CreateSubKey(RunKey, writable: true);
                 key?.SetValue(AppName, BuildCommand(exe));
+                return key != null;
             }
             catch (Exception ex)
             {
                 AppLog.Default.Warning("StartupHelper: failed to write Run key", ex);
+                return false;
             }
         }
 
-        private static void RemoveRunKeyValue()
+        private static bool RemoveRunKeyValue()
         {
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(RunKey, true);
                 if (key?.GetValue(AppName) != null)
                     key.DeleteValue(AppName, throwOnMissingValue: false);
+                return true;
             }
             catch (Exception ex)
             {
                 AppLog.Default.Warning("StartupHelper: failed to remove Run key", ex);
+                return false;
             }
         }
 

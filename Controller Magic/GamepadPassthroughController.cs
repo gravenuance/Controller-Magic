@@ -131,6 +131,14 @@ internal sealed class GamepadPassthroughController : IDisposable
         _driversReady = status.HidHideInstalled && status.VigemInstalled;
     }
 
+    // Run before SDL first lists devices: a pad an earlier run left hidden must already be visible
+    // to this process then, not only from its first cloak transition onwards.
+    public void AllowListBeforeDeviceScan()
+    {
+        if (_settingOn() && _hidHide.IsInstalled)
+            _hidHide.EnsureAppAllowListed();
+    }
+
     // For Settings' toggle-enablement check: runs the same detection off the calling thread so a
     // UI-thread caller never blocks on it.
     public Task<DriverStatus> DetectDriverStatusAsync(CancellationToken ct = default) =>
@@ -140,9 +148,6 @@ internal sealed class GamepadPassthroughController : IDisposable
 
     // Whether the pad is, or is about to be, hidden: a fullscreen game must get it back even before it arrives.
     public bool HidesPad => _cloaked || ComputeShouldBeActive(_settingOn(), _driversReady, fullscreenSuspended: false);
-
-    // A game reads the pad through the virtual one, so a slow poll would delay its input.
-    public bool IsForwarding => _vigem.IsConnected;
 
     // The XInput slots the virtual pad may occupy, a bit each - ControllerPoller feeds this to
     // XInputPadReader so its slot-scanning never reads this app's own virtual pad back as if it
@@ -157,11 +162,16 @@ internal sealed class GamepadPassthroughController : IDisposable
         if (!_startupResetDone)
         {
             _startupResetDone = true;
-            // Guaranteed crash/force-kill recovery: unconditionally clear cloaking left over from
-            // a previous run that didn't exit cleanly, before evaluating current settings at all.
-            _ = _runInBackground(() =>
+            // Crash/force-kill recovery: clear cloaking a previous run left on before evaluating
+            // anything else. Cloaking is one system-wide switch, so with the setting off it may
+            // belong to another tool and stays as it is. Held as the transition so the first
+            // cloak can't land before this uncloak.
+            bool ownsCloaking = _settingOn();
+            _transition = _runInBackground(() =>
             {
-                _hidHide.SetCloakingEnabled(false);
+                // A failure is logged by the bridge; the first transition sets the state it needs anyway.
+                if (ownsCloaking)
+                    _ = _hidHide.SetCloakingEnabled(false);
                 RefreshDriverStatus();
             });
         }
@@ -199,11 +209,31 @@ internal sealed class GamepadPassthroughController : IDisposable
             gotPad, _connection != null, _connection?.BlockAttempted ?? false,
             virtualPadUnavailable: !_virtualPadRetry.CanAttempt);
         var current = new PassthroughTarget(_cloaked, _vigem.IsConnected, BlockConnection: false);
-        if (target == current)
+        if (target == current || (target.Hiding != current.Hiding && CloakRetryPending()))
             return;
 
         var toBlock = target.BlockConnection ? _connection : null;
         _transition = _runInBackground(() => ApplyTransition(current, target, toBlock));
+    }
+
+    // A failed cloak or uncloak is retried after this, doubling with each further failure up to
+    // MaxCloakRetryDelay, rather than on every 8 ms tick.
+    internal static readonly TimeSpan CloakRetryDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan MaxCloakRetryDelay = TimeSpan.FromMinutes(1);
+
+    // Written by transitions, read by the poll thread; _cloakFailedAt is 0 when nothing failed.
+    private long _cloakFailedAt;
+    private int _cloakFailures;
+
+    private bool CloakRetryPending()
+    {
+        long failedAt = Volatile.Read(ref _cloakFailedAt);
+        if (failedAt == 0)
+            return false;
+
+        int doublings = Math.Min(Volatile.Read(ref _cloakFailures) - 1, 6);
+        var delay = TimeSpan.FromTicks(Math.Min(CloakRetryDelay.Ticks << doublings, MaxCloakRetryDelay.Ticks));
+        return _clock.GetElapsedTime(failedAt) < delay;
     }
 
     // A failed submit disconnects the bridge on its own; counting that as a failed attempt paces a
@@ -286,9 +316,11 @@ internal sealed class GamepadPassthroughController : IDisposable
                 BlockConnection(toBlock);
 
             bool virtualPadReady = !target.VirtualPad || current.VirtualPad || ConnectVirtualPad();
-            SetCloaked(target.Hiding && virtualPadReady);
+            bool cloakApplied = SetCloaked(target.Hiding && virtualPadReady);
 
-            if (!target.VirtualPad && current.VirtualPad)
+            // With the real pad still visible, a virtual one would show games two controllers.
+            bool hidingFailed = target.Hiding && virtualPadReady && !cloakApplied;
+            if ((!target.VirtualPad && current.VirtualPad) || (hidingFailed && _vigem.IsConnected))
                 DisconnectVirtualPad();
 
             ResourceUsageMonitor.LogSnapshot("after-transition");
@@ -339,15 +371,28 @@ internal sealed class GamepadPassthroughController : IDisposable
         _vigem.Disconnect();
     }
 
-    private void SetCloaked(bool cloaked)
+    // _cloaked changes only when HidHide took the change; a failure is retried, backing off from
+    // CloakRetryDelay. Returns whether the cloak is now as asked.
+    private bool SetCloaked(bool cloaked)
     {
         lock (_shutdownGate)
         {
-            if (cloaked == _cloaked || (cloaked && _shutDown))
-                return;
+            if (cloaked == _cloaked)
+                return true;
+            if (cloaked && _shutDown)
+                return false;
 
-            _hidHide.SetCloakingEnabled(cloaked);
+            if (!_hidHide.SetCloakingEnabled(cloaked))
+            {
+                Volatile.Write(ref _cloakFailures, _cloakFailures + 1);
+                Volatile.Write(ref _cloakFailedAt, _clock.GetTimestamp());
+                return false;
+            }
+
+            Volatile.Write(ref _cloakFailures, 0);
+            Volatile.Write(ref _cloakFailedAt, 0);
             _cloaked = cloaked;
+            return true;
         }
     }
 
@@ -410,7 +455,10 @@ internal sealed class GamepadPassthroughController : IDisposable
             DisconnectVirtualPad();
             lock (_shutdownGate)
             {
-                _hidHide.SetCloakingEnabled(false);
+                // Another tool's cloaking is left alone, as at startup. A failure is logged by the
+                // bridge and cleared by the next launch's startup reset.
+                if (_cloaked || _settingOn())
+                    _ = _hidHide.SetCloakingEnabled(false);
                 _cloaked = false;
             }
         }
