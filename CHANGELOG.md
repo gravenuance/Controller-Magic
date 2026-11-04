@@ -8,6 +8,14 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-11-04
+
+### Changed
+- Changing the volume with the left trigger and the D-pad now shows the new level at the bottom
+  of the screen, the same way switching sound output shows its name: a speaker icon with one to
+  three waves and "Volume 42%", or "Muted (42%)". Stepping up while muted unmutes, as the
+  keyboard volume key does.
+
 ## [1.14.0] - 2026-11-04
 
 ### Added

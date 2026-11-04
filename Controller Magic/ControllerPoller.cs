@@ -267,8 +267,14 @@ namespace ControllerMagic
         private readonly TaskbarClickFollower _taskbarFollower = new(TimeProvider.System, new Win32DesktopWindows());
         private readonly SoundOutputCycler _soundOutputs = new(new CoreAudioSoundOutputs());
 
+        private readonly VolumeStepper _volume = new(new CoreAudioVolume());
+
         // Raised on a background thread with the output now in use, or null when switching failed.
         public event Action<SoundOutput?>? SoundOutputChanged;
+
+        // Raised on a background thread with the new level, or null when changing it failed; in step
+        // order, so a handler must not block.
+        public event Action<VolumeLevel?>? VolumeChanged;
 
         private const int SlowScrollIntervalMs = 200;
         private const int FastScrollIntervalMs = 20;
@@ -1148,9 +1154,9 @@ namespace ControllerMagic
             if (held is not { } step || !_volumeRepeat.Fires(held: true))
                 return;
 
-            const ushort VK_VOLUME_DOWN = 0xAE;
-            const ushort VK_VOLUME_UP = 0xAF;
-            _input.SendKey(step == VolumeStep.Up ? VK_VOLUME_UP : VK_VOLUME_DOWN);
+            // Off the poll thread, like CycleSoundOutput; set directly rather than by volume key so
+            // the new level is known and can be shown.
+            _ = Task.Run(() => _volume.Step(step, level => VolumeChanged?.Invoke(level)));
         }
 
         // Off the poll thread: Windows can take a moment to switch, and the cursor mustn't stall meanwhile.

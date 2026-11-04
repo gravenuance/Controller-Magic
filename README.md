@@ -32,7 +32,8 @@ remote outside of fullscreen games — a background tray app, not a window you k
   Windows to the next or previous connected sound output (speakers, headset, a monitor's
   speakers). The name of the output now in use shows briefly at the bottom of the screen.
 - **Volume** — hold the left trigger and press D-pad Up or Down to turn the volume up or down;
-  keep the D-pad held to keep changing it.
+  keep the D-pad held to keep changing it. The new level shows briefly at the bottom of the
+  screen.
 - **Controller lights** — on a DualSense or DualShock 4, the lightbar shows orange for mouse
   control, green while the on-screen keyboard is open, and red for mouse control on low battery.
   A fullscreen game keeps its own lightbar colour. A DualSense's white LEDs under the touchpad

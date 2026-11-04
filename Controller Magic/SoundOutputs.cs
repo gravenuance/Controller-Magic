@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using static ControllerMagic.CoreAudioInterop;
 
 namespace ControllerMagic;
 
@@ -76,94 +77,14 @@ internal sealed class SoundOutputCycler(ISoundOutputs outputs)
 // Sound settings use. It is undocumented but unchanged since Windows 7.
 internal sealed class CoreAudioSoundOutputs : ISoundOutputs
 {
-    private const int eRender = 0;
-    private const int DEVICE_STATE_ACTIVE = 0x1;
     private const int STGM_READ = 0;
     private const ushort VT_LPWSTR = 31;
-    private const int E_NOTFOUND = unchecked((int)0x80070490);
-
-    private enum ERole
-    {
-        Console = 0,
-        Multimedia = 1,
-        Communications = 2,
-    }
 
     private static readonly PROPERTYKEY FriendlyNameKey = new(new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), 14);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private readonly struct PROPERTYKEY(Guid formatId, int propertyId)
-    {
-        public readonly Guid FormatId = formatId;
-        public readonly int PropertyId = propertyId;
-    }
-
-    [StructLayout(LayoutKind.Explicit, Size = 24)]
-    private struct PROPVARIANT
-    {
-        [FieldOffset(0)]
-        public ushort vt;
-
-        [FieldOffset(8)]
-        public nint pointer;
-    }
-
-    [ComImport]
-    [Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
-    private class MMDeviceEnumerator;
 
     [ComImport]
     [Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")]
     private class PolicyConfigClient;
-
-    [ComImport]
-    [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IMMDeviceEnumerator
-    {
-        IMMDeviceCollection EnumAudioEndpoints(int dataFlow, int stateMask);
-
-        [PreserveSig]
-        int GetDefaultAudioEndpoint(int dataFlow, ERole role, out IMMDevice? endpoint);
-    }
-
-    [ComImport]
-    [Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IMMDeviceCollection
-    {
-        int GetCount();
-
-        IMMDevice Item(int index);
-    }
-
-    [ComImport]
-    [Guid("D666063F-1587-4E43-81F1-B948E807363F")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IMMDevice
-    {
-        [PreserveSig]
-        int Activate();
-
-        IPropertyStore OpenPropertyStore(int access);
-
-        [return: MarshalAs(UnmanagedType.LPWStr)]
-        string GetId();
-    }
-
-    [ComImport]
-    [Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IPropertyStore
-    {
-        [PreserveSig]
-        int GetCount();
-
-        [PreserveSig]
-        int GetAt();
-
-        void GetValue(in PROPERTYKEY key, out PROPVARIANT value);
-    }
 
     // Only SetDefaultEndpoint is called; the slots before it keep the vtable in order.
     [ComImport]
@@ -204,15 +125,7 @@ internal sealed class CoreAudioSoundOutputs : ISoundOutputs
         return outputs;
     }
 
-    public string? DefaultId()
-    {
-        var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
-        int hr = enumerator.GetDefaultAudioEndpoint(eRender, ERole.Multimedia, out var device);
-        if (hr == E_NOTFOUND)
-            return null;
-        Marshal.ThrowExceptionForHR(hr);
-        return device?.GetId();
-    }
+    public string? DefaultId() => DefaultRenderDevice()?.GetId();
 
     // Every role, as picking a device in Windows' sound settings does, so calls follow too.
     public void SetDefault(string id)

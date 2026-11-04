@@ -16,7 +16,7 @@ namespace ControllerMagic
         private readonly NotifyIcon _trayIcon;
         private readonly ControllerPoller _controllerPoller;
         private readonly KeyboardOverlayForm _overlay;
-        private readonly SoundOutputToast _soundToast = new();
+        private readonly SoundToast _soundToast = new();
         private readonly Bitmap _settingsIcon;
         private readonly Bitmap _restartIcon;
         private readonly Bitmap _exitIcon;
@@ -54,6 +54,7 @@ namespace ControllerMagic
             _controllerPoller.KeyboardModeChanged += OnKeyboardModeChanged;
             _controllerPoller.PassthroughNoticeRaised += OnPassthroughNotice;
             _controllerPoller.SoundOutputChanged += OnSoundOutputChanged;
+            _controllerPoller.VolumeChanged += OnVolumeChanged;
             _controllerPoller.DaisywheelKeyTyped += OnDaisywheelKeyTyped;
 
             _overlay = new KeyboardOverlayForm(_controllerPoller, TimeProvider.System);
@@ -145,6 +146,9 @@ namespace ControllerMagic
         private void OnSoundOutputChanged(SoundOutput? output) =>
             _overlay.BeginInvoke(() => _soundToast.ShowMessage(output?.Name ?? "Couldn't switch sound output"));
 
+        private void OnVolumeChanged(VolumeLevel? level) =>
+            _overlay.BeginInvoke(() => _soundToast.ShowVolume(level));
+
         private void OnPassthroughNotice(PassthroughNotice notice)
         {
             string text = notice switch
@@ -225,6 +229,7 @@ namespace ControllerMagic
             _controllerPoller.KeyboardModeChanged -= OnKeyboardModeChanged;
             _controllerPoller.PassthroughNoticeRaised -= OnPassthroughNotice;
             _controllerPoller.SoundOutputChanged -= OnSoundOutputChanged;
+            _controllerPoller.VolumeChanged -= OnVolumeChanged;
             _controllerPoller.DaisywheelKeyTyped -= OnDaisywheelKeyTyped;
             _controllerPoller.Stop();
             _controllerPoller.Dispose();
