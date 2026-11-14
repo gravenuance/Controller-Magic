@@ -69,6 +69,8 @@ internal static class ElevatedDriverInstall
 
     private static bool PrepareStagingDirectory(out string stagingDirectory)
     {
+        // Machine-wide on purpose, so no per-user cache variable applies: the elevated process must
+        // trust only a folder that standard users cannot write to (ADR 0001).
         string appDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ControllerMagic");
         stagingDirectory = Path.Combine(appDirectory, "drivers");

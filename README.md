@@ -59,6 +59,17 @@ remote outside of fullscreen games — a background tray app, not a window you k
 Deadzones, sensitivity, the acceleration curve, ramp-up time, touchpad speed, the idle turn-off time, and both
 app/service lists are all adjustable from Settings.
 
+## Where data lives
+
+| What | Folder | Variable |
+|---|---|---|
+| Settings (`settings.json`) | `%LocalAppData%\ControllerMagic` | none |
+| Log (`app.log`) and downloaded drivers | `%LocalAppData%\ControllerMagic` | `CONTROLLERMAGIC_CACHE_DIR` |
+| Driver installers copied for the elevated install | `%ProgramData%\ControllerMagic\drivers` (admin-only, fixed on purpose) | none |
+
+Set `CONTROLLERMAGIC_CACHE_DIR` to an absolute path to move the log and the driver downloads; a
+relative path is ignored and logged. The folder is read when the app starts.
+
 ## Building
 
 Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download) on Windows.

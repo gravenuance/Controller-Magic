@@ -58,8 +58,7 @@ internal static class DriverInstaller
     }
 
     // Only a download cache: the elevated install copies from here into an admin-only directory.
-    private static string DriversDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ControllerMagic", "drivers");
+    private static string DriversDirectory => Path.Combine(AppPaths.Cache().Path, "drivers");
 
     // currentStatus lets a caller that already ran DriverDependency.Detect skip re-checking, and
     // lets this method download/verify/install only whichever driver is actually missing - a

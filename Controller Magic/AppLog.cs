@@ -38,9 +38,16 @@ internal sealed class AppLog
     public string FilePath => _path;
 
     // Settable only so the test run can redirect it away from the user's real log.
-    public static AppLog Default { get; internal set; } = new(
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ControllerMagic", "app.log"),
-        TimeProvider.System);
+    public static AppLog Default { get; internal set; } = CreateDefault();
+
+    private static AppLog CreateDefault()
+    {
+        var cache = AppPaths.Cache();
+        var log = new AppLog(Path.Combine(cache.Path, "app.log"), TimeProvider.System);
+        if (cache.Warning != null)
+            log.Warning(cache.Warning);
+        return log;
+    }
 
     public void Info(string message) => Write(LogLevel.Information, message, null);
     public void Warning(string message, Exception? ex = null) => Write(LogLevel.Warning, message, ex);

@@ -8,6 +8,10 @@ Tags before `1.3` predate this file, so their contents aren't reconstructed here
 
 ## [Unreleased]
 
+### Added
+- The `CONTROLLERMAGIC_CACHE_DIR` environment variable moves the log and the downloaded
+  drivers to another folder. Without it they stay in `%LocalAppData%\ControllerMagic`.
+
 ## [1.14.1] - 2026-11-04
 
 ### Changed
