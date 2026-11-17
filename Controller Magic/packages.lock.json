@@ -4,13 +4,13 @@
     "net10.0-windows7.0": {
       "Nefarius.Drivers.HidHide": {
         "type": "Direct",
-        "requested": "[3.5.0-pre001, )",
-        "resolved": "3.5.0-pre001",
-        "contentHash": "RKZa9m7yZ74k6M5SgAd0Rc2i8DqZ1xJ/joPr4jl391eStV5TFz/AG4wnUyQcnQOKkjETKQcVozgkr8ZojwxvhA==",
+        "requested": "[3.5.1, )",
+        "resolved": "3.5.1",
+        "contentHash": "Nhj/gSGtjaU5Gq0qQha83LhxIgT7rHG1czs5ffU5EAP1Qnahur2nMMMSak/jOMjnA2UTcm4MmsOMst0uBr/2Rg==",
         "dependencies": {
-          "Microsoft.Extensions.Logging.Abstractions": "10.0.8",
-          "Nefarius.Utilities.DeviceManagement": "5.2.0",
-          "Nefarius.Vicius.Abstractions": "1.4.1"
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.0",
+          "Nefarius.Utilities.DeviceManagement": "6.2.0",
+          "Nefarius.Vicius.Abstractions": "1.8.1"
         }
       },
       "Nefarius.Utilities.DeviceManagement": {
@@ -33,9 +33,9 @@
       },
       "NJsonSchema.Annotations": {
         "type": "Direct",
-        "requested": "[11.6.1, )",
-        "resolved": "11.6.1",
-        "contentHash": "WA4z8iK+0SOh2/qoo7rtEanj/LjJZ8oWWoXI8u1xcYMk6VzHONqpabJBYGrzqDO41ld+VQHOFL+B8MXncIVSSA=="
+        "requested": "[11.6.2, )",
+        "resolved": "11.6.2",
+        "contentHash": "C0CfVivVJjyEr/m/z2QXuzPnChVwFLqd+5kM+cE4gkM5ukF+QI30IPrep88wSPeYaeQL3LB/RG5PFGOxVsdHNg=="
       },
       "ppy.SDL2-CS": {
         "type": "Direct",
@@ -51,22 +51,24 @@
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
         "type": "Transitive",
-        "resolved": "10.0.8",
-        "contentHash": "21nbDV60SRPWGIivsyl6lqBeEJNG1sginhhfWgRrr3Ais7aQ12To25OAHQxgoiJkjqy1aQ6RxpZBGYuTi7Ge6A=="
+        "resolved": "8.0.0",
+        "contentHash": "cjWrLkJXK0rs4zofsK4bSdg+jhDLTaxrkXu4gS6Y7MAlCvRyNNgwY/lJi5RDlQOnSZweHqoyvgvbdvQsRIW+hg=="
       },
       "Microsoft.Extensions.Logging.Abstractions": {
         "type": "Transitive",
-        "resolved": "10.0.8",
-        "contentHash": "fdVadZmsC8jRP0KvKy8mO8f6GV/HyBvElfcSxEhd+5FM5boAw/01iSaCto5G3G37ApJira4A3pNaVvBv8cUiLQ==",
+        "resolved": "8.0.0",
+        "contentHash": "arDBqTgFCyS0EvRV7O3MZturChstm50OJ0y9bDJvAcmEPJm0FFpFyjU/JLYyStNGGey081DvnQYlncNX5SJJGA==",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.8"
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.0"
         }
       },
       "Nefarius.Vicius.Abstractions": {
         "type": "Transitive",
-        "resolved": "1.4.1",
-        "contentHash": "NnzB+MHb9WCdOQ856QlgB59l9O/lb9iGU7l7Sq7Zxg8fg62IfdRI0bwRwRDeKGtpm3dbOZtonuO6gVvm0DbzNA==",
+        "resolved": "1.8.1",
+        "contentHash": "3SigWfcHtfQsdAUv1Bz7ZTYv695LwKFFAeLSv3ofL1SAnOyYc6SX46jfUWVxbamoU+H+zsvfxHfn0GR+4cQDAg==",
         "dependencies": {
+          "NJsonSchema.Annotations": "11.6.1",
+          "Newtonsoft.Json": "13.0.3",
           "System.ComponentModel.Annotations": "5.0.0"
         }
       },

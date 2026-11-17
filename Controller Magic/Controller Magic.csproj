@@ -60,7 +60,7 @@
          copied-to-output config file. -->
     <PackageReference Include="ppy.SDL2-CS" Version="1.0.741-alpha" ExcludeAssets="contentFiles" />
     <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
-    <PackageReference Include="Nefarius.Drivers.HidHide" Version="3.5.0-pre001" />
+    <PackageReference Include="Nefarius.Drivers.HidHide" Version="3.5.1" />
     <PackageReference Include="Nefarius.Utilities.DeviceManagement" Version="6.2.0" />
     <!-- Nefarius.Vicius.Abstractions (a transitive dependency via Nefarius.Drivers.HidHide's
          HidHideSetupProvider) references NJsonSchema.Annotations attributes on its DTOs but
@@ -69,7 +69,7 @@
          whether it's looking for that one, so without this present, deserializing HidHide's
          update-check response throws a FileNotFoundException for this assembly. Version pinned to
          exactly what that compiled reference expects (11.3.2.0). -->
-    <PackageReference Include="NJsonSchema.Annotations" Version="11.6.1" />
+    <PackageReference Include="NJsonSchema.Annotations" Version="11.6.2" />
     <!-- Same reason as NJsonSchema.Annotations above: another attribute type
          Nefarius.Vicius.Abstractions references without declaring as a dependency. Confirmed via
          Nefarius.Vicius.Abstractions.dll's own GetReferencedAssemblies() that these two are the
