@@ -944,7 +944,7 @@ namespace ControllerMagic
             _onShown.Add(() =>
             {
                 var items = getItems();
-                if (!chips.Items.SequenceEqual(items, StringComparer.Ordinal))
+                if (!chips.GetItems().SequenceEqual(items, StringComparer.Ordinal))
                     chips.SetItems(items);
             });
 

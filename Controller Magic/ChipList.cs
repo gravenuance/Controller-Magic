@@ -16,7 +16,7 @@ namespace ControllerMagic
         public Color MutedText { get; set; } = Color.FromArgb(0x86, 0x8F, 0xA0);
         public Color FocusColor { get; set; } = Color.FromArgb(0xE8, 0xA3, 0x3D);
 
-        public List<string> Items => new(_items);
+        public List<string> GetItems() => new(_items);
 
         public ChipList()
         {
@@ -95,7 +95,7 @@ namespace ControllerMagic
 
             _items.Add(item);
             InsertChip(item);
-            ItemsChanged?.Invoke(Items);
+            ItemsChanged?.Invoke(GetItems());
         }
 
         // Chips sit before the add box, in item order.
@@ -134,7 +134,7 @@ namespace ControllerMagic
             else
                 chip.Dispose();
 
-            ItemsChanged?.Invoke(Items);
+            ItemsChanged?.Invoke(GetItems());
         }
     }
 }

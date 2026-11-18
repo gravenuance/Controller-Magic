@@ -42,7 +42,7 @@ public sealed class AppSettingsTests : IDisposable
 
     private void WriteSettings(string json) => File.WriteAllText(SettingsPath, json);
 
-    private static JsonElement ReadJson(string path) => JsonDocument.Parse(File.ReadAllText(path)).RootElement;
+    private static JsonElement ReadJson(string path) => JsonElement.Parse(File.ReadAllText(path));
 
     // Regression: Instance loaded before the ranges were initialised, so every range read as 0..0.
     [Fact]

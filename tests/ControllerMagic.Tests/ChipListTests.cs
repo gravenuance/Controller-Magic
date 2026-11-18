@@ -22,7 +22,7 @@ public class ChipListTests
         Assert.Same(before[1], after[1]);
         Assert.Equal("firefox", after[2].Text);
         Assert.Same(addBox, list.Controls[^1]);
-        Assert.Equal(["vlc", "steam", "firefox"], list.Items);
+        Assert.Equal(["vlc", "steam", "firefox"], list.GetItems());
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public class ChipListTests
 
         list.AddItem("VLC");
 
-        Assert.Equal(["vlc"], list.Items);
+        Assert.Equal(["vlc"], list.GetItems());
         Assert.Equal(0, changes);
     }
 

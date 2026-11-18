@@ -72,7 +72,7 @@ relative path is ignored and logged. The folder is read when the app starts.
 
 ## Building
 
-Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download) on Windows.
+Requires the [.NET 11 SDK](https://dotnet.microsoft.com/download) on Windows.
 
 ```
 dotnet build "Controller Magic.slnx"
@@ -84,7 +84,7 @@ To produce the distributable, self-contained single-file executable:
 dotnet publish "Controller Magic/Controller Magic.csproj" -p:PublishProfile=win-x64
 ```
 
-The result lands in `Controller Magic/bin/Release/net10.0-windows/publish/win-x64/` and needs no
+The result lands in `Controller Magic/bin/Release/net11.0-windows/publish/win-x64/` and needs no
 .NET runtime installed on the machine it runs on.
 
 ## Verifying a download
