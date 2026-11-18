@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <RootNamespace>ControllerMagic</RootNamespace>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
@@ -54,13 +54,13 @@
     <PackageReference Include="Vortice.XInput" Version="3.8.3" />
     <!-- ExcludeAssets=contentFiles: this package's only content file is a Mono-style dllmap
          app.config for resolving "SDL2" to libSDL2.so/.dylib on non-Windows - dead weight for a
-         Windows-only (net10.0-windows) app, where the OS's own native-library loader already
+         Windows-only (net11.0-windows) app, where the OS's own native-library loader already
          resolves a bare "SDL2" DllImport name to SDL2.dll without it. Doesn't affect the actual
          managed/native assets this package provides (compile/runtime/native), only this one
          copied-to-output config file. -->
     <PackageReference Include="ppy.SDL2-CS" Version="1.0.741-alpha" ExcludeAssets="contentFiles" />
     <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
-    <PackageReference Include="Nefarius.Drivers.HidHide" Version="3.5.0-pre001" />
+    <PackageReference Include="Nefarius.Drivers.HidHide" Version="3.5.1" />
     <PackageReference Include="Nefarius.Utilities.DeviceManagement" Version="6.2.0" />
     <!-- Nefarius.Vicius.Abstractions (a transitive dependency via Nefarius.Drivers.HidHide's
          HidHideSetupProvider) references NJsonSchema.Annotations attributes on its DTOs but
@@ -69,7 +69,7 @@
          whether it's looking for that one, so without this present, deserializing HidHide's
          update-check response throws a FileNotFoundException for this assembly. Version pinned to
          exactly what that compiled reference expects (11.3.2.0). -->
-    <PackageReference Include="NJsonSchema.Annotations" Version="11.6.1" />
+    <PackageReference Include="NJsonSchema.Annotations" Version="11.6.2" />
     <!-- Same reason as NJsonSchema.Annotations above: another attribute type
          Nefarius.Vicius.Abstractions references without declaring as a dependency. Confirmed via
          Nefarius.Vicius.Abstractions.dll's own GetReferencedAssemblies() that these two are the
