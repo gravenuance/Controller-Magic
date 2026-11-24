@@ -21,7 +21,7 @@
          both packages resolve onto the same Microsoft.Testing.Platform major version again. -->
     <PackageReference Include="xunit.v3" Version="4.0.3" />
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.12.0" />
-    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="11.0.0" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="11.0.1" />
   </ItemGroup>
 
   <ItemGroup>
